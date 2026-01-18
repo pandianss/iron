@@ -49,6 +49,7 @@ Next ==
 
 ### Invariants
 
+
 #### A.5 Identity Invariants
 **INV-ID-1: All events are signed**
 ```tla
@@ -60,6 +61,14 @@ Inv_AllSigned ==
 ```tla
 Inv_KnownActors ==
   \A e \in events : e.actor \in Identities
+```
+
+**INV-ID-3: Delegation Scope (Gap 1)**
+```tla
+Inv_DelegationScope ==
+  \A e \in events :
+    e.actor.delegator # NULL =>
+      e.actor.scope \subseteq e.actor.delegator.scope
 ```
 
 #### A.6 Budget Invariants
@@ -75,6 +84,14 @@ Inv_BudgetRespected ==
   \A e \in events : e.cost <= MAX_BUDGET
 ```
 
+**INV-BUD-3: No Partial Execution (Gap 6)**
+```tla
+Inv_NoPartialExecution ==
+  \A e \in events :
+    budgets[e.actor] < e.cost =>
+      state' = state
+```
+
 #### A.7 Accountability Invariants
 **INV-ACC-1: Every event logged**
 ```tla
@@ -82,13 +99,33 @@ Inv_AllEventsLogged ==
   Len(events) = Len(log)
 ```
 
-### A.8 System Safety Property
+**INV-ACC-2: Attempted Events Logged (Gap 5)**
+```tla
+Inv_AttemptLogged ==
+  \A e \in attemptedEvents :
+    \E l \in log : l.eventHash = hash(e)
+```
+
+#### A.8 Time Invariants (Gap 3)
+**INV-TIME-1: Monotonicity**
+```tla
+Inv_TimeMonotonic ==
+  \A i \in 2..Len(events) :
+    events[i].timestamp >= events[i-1].timestamp
+```
+
+### A.9 System Safety Property
 ```tla
 Safety ==
   Inv_AllSigned
   /\ Inv_KnownActors
+  /\ Inv_DelegationScope
   /\ Inv_BudgetNonNegative
+  /\ Inv_BudgetRespected
+  /\ Inv_NoPartialExecution
   /\ Inv_AllEventsLogged
+  /\ Inv_AttemptLogged
+  /\ Inv_TimeMonotonic
 
 Spec ==
   Init /\ [][Next]_<<events, state, log, budgets>>
@@ -98,41 +135,7 @@ Spec ==
 
 ## Part B — Alloy Specification (Structural & Relational)
 
-Alloy is used to verify structural impossibility of governance violations.
-
-### B.1 Core Signatures
-```alloy
-sig Identity {}
-
-sig Protocol {}
-
-sig Intent {
-  actor: one Identity,
-  signed: one Bool
-}
-
-sig Event {
-  intent: one Intent,
-  protocol: one Protocol
-}
-
-sig State {
-  prev: lone State,
-  event: lone Event
-}
-```
-
-### B.2 Accountability Log
-```alloy
-sig LogEntry {
-  event: one Event,
-  prev: lone LogEntry
-}
-```
-
-### Invariants
-
-#### B.3 Identity Invariants
+### B.3 Identity Invariants
 **INV-ID-1: No unsigned intent**
 ```alloy
 fact SignedIntentOnly {
@@ -147,11 +150,43 @@ fact NoAnonymousEvents {
 }
 ```
 
+**INV-ID-3: Delegation is Restrictive (Gap 1)**
+```alloy
+fact DelegationIsRestrictive {
+  all d: Identity |
+    d.delegator != none implies
+      d.scope in d.delegator.scope
+}
+```
+
+**INV-ID-4: Revocation Stops Authority (Gap 4)**
+```alloy
+fact RevocationStopsAuthority {
+  all i: Identity |
+    i.revoked = True implies
+      no e: Event | e.intent.actor = i
+}
+
+fact RevocationPropagates {
+  all i: Identity |
+    i.revoked = True implies
+      all d: Identity | d.delegator = i implies d.revoked = True
+}
+```
+
 #### B.4 Protocol Invariants
 **INV-PRO-1: Every event governed by a protocol**
 ```alloy
 fact ProtocolRequired {
   all e: Event | e.protocol != none
+}
+```
+
+**INV-PRO-2: No Conflicting Protocols (Gap 2)**
+```alloy
+assert NoConflictingProtocols {
+  all e: Event |
+    lone p: Protocol | applies[p, e]
 }
 ```
 
@@ -170,6 +205,15 @@ fact NoSilentState {
 }
 ```
 
+**INV-STATE-3: Monotonic Time (Gap 3)**
+```alloy
+fact MonotonicTime {
+  all s: State |
+    s.prev != none implies
+      s.event.timestamp >= s.prev.event.timestamp
+}
+```
+
 #### B.6 Accountability Invariants
 **INV-ACC-1: Every event logged**
 ```alloy
@@ -184,6 +228,7 @@ fact LogChain {
   all l: LogEntry | lone l.prev
 }
 ```
+
 
 #### B.7 Budget Model
 ```alloy

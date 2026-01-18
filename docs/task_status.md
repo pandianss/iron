@@ -56,11 +56,21 @@
     - [x] Verify Hash-chaining uses strict SHA-256(prev + intent)
     - [x] Ensure non-repudiation
 
+## Formal Gap Filling (Addressing Gaps 1-6)
+- [x] **Gap 1: Delegation Scope** (`delegate.scope ⊆ delegator.scope`)
+- [x] **Gap 2: Protocol Conflict** (Reject if >1 protocol applies)
+- [x] **Gap 3: Monotonic Time** (`timestamp >= prev.timestamp`)
+- [x] **Gap 4: Revocation** (Transitive & Terminal)
+- [x] **Gap 5: Accountability Completeness** (Log *Attempted* Actions)
+- [x] **Gap 6: Budget Atomicity** (Exhaustion = Zero State Change)
+
 ## Formal Model Alignment (TLA+ / Alloy)
 - [x] **Safety Invariants (TLA+)**
     - [x] INV-ID-1: All events signed (Enforced by `State.apply`)
     - [x] INV-ID-2: No hidden actors (Enforced by `Principal` check)
     - [x] INV-ACC-1: Every event logged (`AuditLog.append`)
+    - [x] INV-ID-3: Scope, INV-TIME-1 Monotonicity, INV-ACC-2 Attempts
 - [x] **Structural Invariants (Alloy)**
     - [x] SignedIntentOnly (`Intent` interface)
     - [x] LogChain (Hash-linked LogEntry)
+    - [x] Protocol Conflict Rejection

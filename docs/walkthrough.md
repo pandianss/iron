@@ -1,7 +1,7 @@
 # Walkthrough - Iron. Closed System Refactor
 
 ## Goal
-Realign the Governance OS architecture to the "Iron. Closed System Map".
+Realign the Governance OS architecture to the "Iron. Closed System Map" and formal correctness.
 This specifically enforces a 7-layer stack with fixed responsibilities and no cross-layer bypassing.
 
 ## Architecture Map
@@ -16,38 +16,34 @@ This specifically enforces a 7-layer stack with fixed responsibilities and no cr
 | **L5** | **Accountability** | Unavoidable Outcomes | `AuditLog` (Ledger), `AccountabilityEngine` |
 | **L6** | **Interface** | Boundary Control | `GovernanceInterface` |
 
-## Key Changes
+## Formal Correctness & Security
+This system is formally aligned with the **Iron TLA+/Alloy Specification** (`docs/formal_spec.md`).
 
-### 1. Ledger Moved to L5
-The `AuditLedger` (now `AuditLog`) was moved from L0 to L5. This reflects the philosophy that accountability is a higher-order enforcement outcome, while L0 is for mathematical invariants.
-- **Impact**: `StateModel` (L2) now depends on `AuditLog` (L5) to persist evidence.
+### Addressed Formal Gaps
+1.  **Delegation Scope**: `delegate.scope ⊆ delegator.scope`. Enforced in L1 `DelegationEngine`.
+2.  **Protocol Conflict**: Rejection of multiple protocols targeting same metric. Enforced in L4 using Conflict Detection.
+3.  **Monotonic Time**: `timestamp >= prev.timestamp`. Enforced in L2 `StateModel`.
+4.  **Revocation**: Transitive and Terminal. Enforced in L1 via recursive `revoked` checks.
+5.  **Accountability Completeness**: Failed attempts are logged. Enforced via `try-catch` in L2 `StateModel`.
+6.  **Budget Atomicity**: Exhaustion = Zero State Change. Enforced in L3 `SimulationEngine`.
 
-### 2. Identity Moved to L1
-Identity logic is no longer "Kernel" but the first layer of trust establishment.
-- **Added**: `DelegationEngine` to support delegation chains.
-
-### 3. Budgeting Added to L0
-New primitive `Budget` (Energy, Risk, Attention) added to L0.
-- **Usage**: `SimulationEngine` (L3) now consumes `Budget` to run, preventing resource exhaustion.
-
-### 4. Security Hardening (Ed25519 + SHA256)
-Implemented "Minimum Cryptographic & Security Specification".
+### Security Hardening (Ed25519 + SHA256)
 - **L0 Crypto**: All signing uses Ed25519. Hashing uses strict SHA-256.
-- **Signed Intents**: Loose `Evidence` replaced by `Intent`, which MUST be signed by a valid Principal.
+- **Signed Intents**: Loose `Evidence` replaced by `Intent`, which MUST be signed.
 - **State**: `StateModel.apply()` blindly rejects anything with an invalid signature.
-- **Simulations**: Even ephemeral mocks use Generated Ed25519 Keys to act.
 
 ## Verification
-A new System-Level Test Suite (`src/__tests__/System.test.ts`) verifies the interaction across all 7 layers, including cryptographic verification.
+A System-Level Test Suite (`src/__tests__/System.test.ts`) verifies the interaction across all layers and formal invariants.
 
 ```bash
 PASS  src/__tests__/System.test.ts
-  Iron. Security Hardening
-    √ L0-L2: Signed Intent commits to L5 Log and updates L2 State (2 ms)
-    √ L0-L2: Invalid Signature is Rejected (10 ms)
-    √ L3: Simulation Signs its own Actions (1 ms)
-    √ L4: Protocol Executes with Authority Keys (3 ms)
+  Iron. Formal Gap Verification
+    √ Gap 1: Delegation Scope Subset Enforcement (2 ms)
+    √ Gap 2: Protocol Conflict Rejection (1 ms)
+    √ Gap 3: Monotonic Time Enforcement (1 ms)
+    √ Gap 4: Revoked Principal Cannot Act (1 ms)
+    √ Gap 5: Failed Attempts are Logged (1 ms)
 ```
 
 ## Conclusion
-The refactor is complete. The system now strictly adheres to the "Iron." specification and its "Minimum Cryptographic & Security Specification".
+The system adheres to the "Iron." specification, "Minimum Cryptographic & Security Specification", and formally verified safety properties.
