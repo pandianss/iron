@@ -1,15 +1,22 @@
 
 // src/L2/State.ts
-import { PrincipalId, Signature } from '../L1/Identity';
-import { LogicalTimestamp } from '../L0/Kernel';
-import { AuditLog } from '../L5/Audit'; // Forward reference to L5 (Dependency Injection preferred)
+import { PrincipalId, IdentityManager } from '../L1/Identity'; // Need IdentityManager to look up keys
+import { verifySignature, hash } from '../L0/Crypto';
+import { AuditLog } from '../L5/Audit';
 
-// --- Evidence ---
-export interface Evidence<T = any> {
-    payload: T;
-    signatory: PrincipalId;
-    signature: Signature;
+// --- Intent (Replaces Evidence) ---
+export interface MetricPayload {
+    metricId: string;
+    value: any;
+}
+
+export interface Intent {
+    intentId: string; // Hash of payload+meta?
+    principalId: PrincipalId;
+    payload: MetricPayload;
     timestamp: string;
+    expiresAt: string;
+    signature: string; // Sign(intentId + principalId + JSON(payload) + timestamp + expiresAt)
 }
 
 // --- Metrics ---
@@ -29,11 +36,7 @@ export interface MetricDefinition {
 
 export class MetricRegistry {
     private metrics: Map<string, MetricDefinition> = new Map();
-
-    register(def: MetricDefinition) {
-        this.metrics.set(def.id, def);
-    }
-
+    register(def: MetricDefinition) { this.metrics.set(def.id, def); }
     get(id: string) { return this.metrics.get(id); }
 }
 
@@ -41,34 +44,61 @@ export class MetricRegistry {
 export interface StateValue<T = any> {
     value: T;
     updatedAt: string;
-    evidenceHash: string; // Link to Audit Log
+    evidenceHash: string; // Link to Audit Log Entry
+    stateHash: string; // SHA256(PrevStateHash + IntentHash)
 }
 
 export class StateModel {
     private state: Map<string, StateValue> = new Map();
     private history: Map<string, StateValue[]> = new Map();
 
-    constructor(private auditLog: AuditLog, private registry: MetricRegistry) { }
+    // Global State Hash? Or Per-Metric?
+    // "State[n].hash = ..." implies a global or per-metric chain.
+    // L5 AuditLog chains Events. State reflects the *Result*.
+    // Let's chain per-metric state for granular provenance.
 
-    public apply(evidence: Evidence): void {
-        const payload = evidence.payload;
+    constructor(
+        private auditLog: AuditLog,
+        private registry: MetricRegistry,
+        private identityManager: IdentityManager // Dependency for Verification
+    ) { }
+
+    public apply(intent: Intent): void {
+        // 1. Verify Identity & Signature
+        const principal = this.identityManager.get(intent.principalId);
+        if (!principal) throw new Error("Unknown Principal");
+
+        // Reconstruct signed data payload
+        const data = `${intent.intentId}:${intent.principalId}:${JSON.stringify(intent.payload)}:${intent.timestamp}:${intent.expiresAt}`;
+
+        if (!verifySignature(data, intent.signature, principal.publicKey)) {
+            console.error("Sig Verification Failed!");
+            console.error("Data:", data);
+            console.error("Key:", principal.publicKey);
+            console.error("Sig:", intent.signature);
+            throw new Error("Invalid Intent Signature");
+        }
+
+        // 2. Validate Payload
+        const payload = intent.payload;
         if (!payload?.metricId) return;
-
-        // 1. Validate Metric
         const def = this.registry.get(payload.metricId);
         if (!def) throw new Error(`Unknown metric: ${payload.metricId}`);
         if (def.validator && !def.validator(payload.value)) throw new Error("Invalid Value");
 
-        // 2. Commit to Audit Log (L5)
-        // L2 Truth depends on L5 Audit. This circular dependency suggests they might be coupled, 
-        // OR the "Kernel" of L5 (The Log) is injected here.
-        const logEntry = this.auditLog.append(evidence);
+        // 3. Commit to Audit Log (L5)
+        const logEntry = this.auditLog.append(intent);
 
-        // 3. Update State
+        // 4. Update State (Hash Linked)
+        const lastState = this.state.get(payload.metricId);
+        const prevStateHash = lastState ? lastState.stateHash : '0000000000000000000000000000000000000000000000000000000000000000';
+        const stateHash = hash(prevStateHash + logEntry.hash); // Chain result
+
         const newState: StateValue = {
             value: payload.value,
-            updatedAt: evidence.timestamp,
-            evidenceHash: logEntry.hash
+            updatedAt: intent.timestamp,
+            evidenceHash: logEntry.hash,
+            stateHash: stateHash
         };
 
         this.state.set(payload.metricId, newState);
@@ -78,16 +108,4 @@ export class StateModel {
 
     public get(id: string) { return this.state.get(id)?.value; }
     public getHistory(id: string) { return this.history.get(id) || []; }
-}
-
-// --- Helper ---
-export class EvidenceFactory {
-    static create(metricId: string, value: any, principal: string, time: LogicalTimestamp): Evidence {
-        return {
-            payload: { metricId, value },
-            signatory: principal,
-            signature: 'sig',
-            timestamp: time.toString()
-        };
-    }
 }

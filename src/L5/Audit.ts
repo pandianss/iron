@@ -1,28 +1,28 @@
 
 // src/L5/Audit.ts
-import { createHash } from 'crypto';
-import { Evidence } from '../L2/State'; // Circular Type? Interface Only.
-import { StateModel } from '../L2/State'; // For Accountability execution
+import { hash } from '../L0/Crypto';
+import { Intent } from '../L2/State';
+import { StateModel } from '../L2/State';
 
 // --- Audit Log (Hash Chain) ---
 export interface LogEntry {
     hash: string;
     previousHash: string;
-    evidence: Evidence;
+    intent: Intent; // Was Evidence
 }
 
 export class AuditLog {
     private chain: LogEntry[] = [];
     private genesisHash = '0000000000000000000000000000000000000000000000000000000000000000';
 
-    public append(evidence: Evidence): LogEntry {
+    public append(intent: Intent): LogEntry {
         const previousHash = this.chain.length > 0 ? this.chain[this.chain.length - 1].hash : this.genesisHash;
-        const hash = this.calculateHash(previousHash, evidence);
+        const entryHash = this.calculateHash(previousHash, intent);
 
         const entry: LogEntry = {
-            hash,
-            previousHash,
-            evidence
+            hash: entryHash,
+            previousHash: previousHash,
+            intent: intent
         };
 
         this.chain.push(entry);
@@ -31,9 +31,9 @@ export class AuditLog {
 
     public getHistory(): LogEntry[] { return [...this.chain]; }
 
-    private calculateHash(prevHash: string, evidence: Evidence): string {
-        const data = prevHash + JSON.stringify(evidence);
-        return createHash('sha256').update(data).digest('hex');
+    private calculateHash(prevHash: string, intent: Intent): string {
+        const data = prevHash + JSON.stringify(intent);
+        return hash(data);
     }
 }
 

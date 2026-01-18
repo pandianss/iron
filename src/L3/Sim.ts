@@ -1,9 +1,12 @@
 
 // src/L3/Sim.ts
-import { StateModel, EvidenceFactory } from '../L2/State';
+import { StateModel } from '../L2/State';
+import { IntentFactory } from '../L2/IntentFactory';
 import { AuditLog } from '../L5/Audit';
 import { MetricRegistry } from '../L2/State';
-import { Budget, BudgetType } from '../L0/Kernel';
+import { Budget } from '../L0/Kernel';
+import { generateKeyPair, Ed25519PrivateKey } from '../L0/Crypto';
+import { IdentityManager, Principal } from '../L1/Identity';
 
 // --- Forecast Model ---
 export class TrendAnalyzer {
@@ -13,7 +16,6 @@ export class TrendAnalyzer {
         const history = this.state.getHistory(metricId);
         if (history.length < 2) return 0;
 
-        // Simple linear
         const p1 = Number(history[history.length - 2].value);
         const p2 = Number(history[history.length - 1].value);
         const slope = p2 - p1;
@@ -36,29 +38,51 @@ export class SimulationEngine {
         action: SimAction,
         budget: Budget
     ): number {
-        // 1. Consume Budget (Simulations aren't free)
+        // 1. Consume Budget
         if (!budget.consume(1)) {
             throw new Error("Simulation Budget Exceeded");
         }
 
-        // 2. Fork State (Mock)
-        // We create ephemeral L5 Log and L2 State
-        const simLog = new AuditLog();
-        const simState = new StateModel(simLog, this.registry);
+        // 2. Setup Ephemeral Simulation Context
+        // We need a Sim Identity to sign things in the forked state.
+        const simKeys = generateKeyPair();
+        const simPrincipal: Principal = {
+            id: 'sim-agent',
+            publicKey: simKeys.publicKey,
+            type: 'AGENT',
+            validFrom: Date.now(),
+            validUntil: Date.now() + 10000
+        };
 
-        // Hydrate (Simplified: just last value)
+        const simIdentityManager = new IdentityManager();
+        simIdentityManager.register(simPrincipal);
+
+        const simLog = new AuditLog();
+        const simState = new StateModel(simLog, this.registry, simIdentityManager);
+
+        // 3. Hydrate (Simplified: Just current state as a signed intent by SimAgent)
         const currentVal = currentState.get(action.targetMetricId);
         if (currentVal !== undefined) {
-            // Mock history replay?
-            // Just set current
-            simState.apply(EvidenceFactory.create(action.targetMetricId, currentVal, 'sim', { toString: () => '0:0' } as any));
+            const intent = IntentFactory.create(
+                action.targetMetricId,
+                currentVal,
+                simPrincipal.id,
+                simKeys.privateKey
+            );
+            simState.apply(intent);
         }
 
-        // 3. Apply Action
+        // 4. Apply Action (Signed by SimAgent)
         const newVal = Number(currentVal || 0) + action.mutation;
-        simState.apply(EvidenceFactory.create(action.targetMetricId, newVal, 'sim', { toString: () => '0:1' } as any));
+        const actionIntent = IntentFactory.create(
+            action.targetMetricId,
+            newVal,
+            simPrincipal.id,
+            simKeys.privateKey
+        );
+        simState.apply(actionIntent);
 
-        // 4. Forecast
+        // 5. Forecast
         const analyzer = new TrendAnalyzer(simState);
         return analyzer.forecast(action.targetMetricId, 1);
     }

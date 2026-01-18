@@ -9,7 +9,6 @@ export class GovernanceInterface {
     public getTruth(id: string) { return this.state.get(id); }
 
     public getAudit(id: string) {
-        // Filter log? In real impl yes.
-        return this.log.getHistory(); // Simplified
+        return this.log.getHistory(); // Returns LogEntry[] with Intent
     }
 }

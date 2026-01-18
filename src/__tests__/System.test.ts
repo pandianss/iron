@@ -1,13 +1,15 @@
 
 import { DeterministicTime, Budget, BudgetType } from '../L0/Kernel';
+import { generateKeyPair, KeyPair } from '../L0/Crypto';
 import { IdentityManager, Principal } from '../L1/Identity';
-import { StateModel, MetricRegistry, MetricType, EvidenceFactory } from '../L2/State';
+import { StateModel, MetricRegistry, MetricType } from '../L2/State';
+import { IntentFactory } from '../L2/IntentFactory';
 import { TrendAnalyzer, SimulationEngine } from '../L3/Sim';
 import { ProtocolEngine } from '../L4/Protocol';
-import { AuditLog, AccountabilityEngine } from '../L5/Audit';
+import { AuditLog } from '../L5/Audit';
 import { GovernanceInterface } from '../L6/Interface';
 
-describe('Iron. Closed System', () => {
+describe('Iron. Security Hardening', () => {
     // Core Components
     let time: DeterministicTime;
     let identity: IdentityManager;
@@ -18,16 +20,31 @@ describe('Iron. Closed System', () => {
     let protocol: ProtocolEngine;
     let iface: GovernanceInterface;
 
-    const admin: Principal = { id: 'admin', publicKey: 'k', type: 'INDIVIDUAL' };
+    // Admin Keys
+    let adminKeys: KeyPair;
+    let admin: Principal;
 
     beforeEach(() => {
         time = new DeterministicTime();
+
+        // Setup Crypto Identity
+        adminKeys = generateKeyPair();
+        admin = {
+            id: 'admin',
+            publicKey: adminKeys.publicKey,
+            type: 'INDIVIDUAL',
+            validFrom: Date.now(),
+            validUntil: Date.now() + 100000
+        };
+
         identity = new IdentityManager();
         identity.register(admin);
 
         auditLog = new AuditLog();
         registry = new MetricRegistry();
-        state = new StateModel(auditLog, registry); // Inject AuditLog into State (L5 -> L2)
+
+        // Inject IdentityManager into State for Verification
+        state = new StateModel(auditLog, registry, identity);
 
         registry.register({ id: 'load', description: '', type: MetricType.GAUGE });
         registry.register({ id: 'fan', description: '', type: MetricType.GAUGE });
@@ -37,49 +54,69 @@ describe('Iron. Closed System', () => {
         iface = new GovernanceInterface(state, auditLog);
     });
 
-    test('L0-L2: Evidence commits to L5 Log and updates L2 State', () => {
-        const ev = EvidenceFactory.create('load', 50, admin.id, time.getNow());
-        state.apply(ev);
+    test('L0-L2: Signed Intent commits to L5 Log and updates L2 State', () => {
+        const intent = IntentFactory.create(
+            'load',
+            50,
+            admin.id,
+            adminKeys.privateKey
+        );
+        state.apply(intent);
 
         // Check L2
         expect(state.get('load')).toBe(50);
         // Check L5
         expect(auditLog.getHistory().length).toBe(1);
-        expect(auditLog.getHistory()[0].evidence).toBe(ev);
+        expect(auditLog.getHistory()[0].intent.intentId).toBe(intent.intentId);
     });
 
-    test('L3: Simulation consumes L0 Budget', () => {
+    test('L0-L2: Invalid Signature is Rejected', () => {
+        const intent = IntentFactory.create(
+            'load',
+            50,
+            admin.id,
+            adminKeys.privateKey
+        );
+        // Tamper signature
+        intent.signature = 'deadbeef';
+
+        expect(() => {
+            state.apply(intent);
+        }).toThrow("Invalid Intent Signature");
+    });
+
+    test('L3: Simulation Signs its own Actions', () => {
         const budget = new Budget(BudgetType.RISK, 10);
 
-        state.apply(EvidenceFactory.create('load', 10, admin.id, time.getNow()));
-        // Action: Add 10. Forecast should show increase.
+        // Initial State with Valid Admin Signed Intent
+        const intent = IntentFactory.create('load', 10, admin.id, adminKeys.privateKey);
+        state.apply(intent);
 
+        // Run Sim (internally generates SimAgent keys)
         const forecast = sim.run(state, { targetMetricId: 'load', mutation: 10 }, budget);
-        // 10 + 10 = 20. Forecast next step -> ??
-        // Sim State history: Mock History? run() implementation sets "0:0" -> 10, "0:1" -> 20.
-        // Trend: +10. Next (Horizon 1) -> 30.
 
         expect(forecast).toBe(30);
         expect(budget.used).toBe(1);
     });
 
-    test('L4: Protocol triggers state change', () => {
+    test('L4: Protocol Executes with Authority Keys', () => {
         protocol.register({
             id: 'p1', triggerMetric: 'load', threshold: 80,
             actionMetric: 'fan', actionMutation: 100
         });
 
         // 1. Initial State
-        state.apply(EvidenceFactory.create('load', 50, admin.id, time.getNow()));
-        state.apply(EvidenceFactory.create('fan', 0, admin.id, time.getNow()));
+        state.apply(IntentFactory.create('load', 50, admin.id, adminKeys.privateKey));
+        state.apply(IntentFactory.create('fan', 0, admin.id, adminKeys.privateKey));
 
-        protocol.evaluateAndExecute(admin.id, time.getNow());
-        expect(state.get('fan')).toBe(0); // No trigger
+        // exec with admin keys
+        protocol.evaluateAndExecute(admin.id, adminKeys.privateKey, time.getNow());
+        expect(state.get('fan')).toBe(0);
 
-        // 2. Trigger State
-        state.apply(EvidenceFactory.create('load', 90, admin.id, time.getNow()));
+        // 2. Trigger
+        state.apply(IntentFactory.create('load', 90, admin.id, adminKeys.privateKey));
 
-        protocol.evaluateAndExecute(admin.id, time.getNow());
-        expect(state.get('fan')).toBe(100); // Triggered
+        protocol.evaluateAndExecute(admin.id, adminKeys.privateKey, time.getNow());
+        expect(state.get('fan')).toBe(100);
     });
 });
