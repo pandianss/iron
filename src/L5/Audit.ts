@@ -7,14 +7,14 @@ export interface LogEntry {
     hash: string;
     previousHash: string;
     intent: Intent;
-    status: 'SUCCESS' | 'FAILURE' | 'ATTEMPT';
+    status: 'SUCCESS' | 'FAILURE' | 'ATTEMPT' | 'REJECT' | 'ABORTED';
 }
 
 export class AuditLog {
     private chain: LogEntry[] = [];
     private genesisHash = '0000000000000000000000000000000000000000000000000000000000000000';
 
-    public append(intent: Intent, status: 'SUCCESS' | 'FAILURE' | 'ATTEMPT' = 'SUCCESS'): LogEntry {
+    public append(intent: Intent, status: 'SUCCESS' | 'FAILURE' | 'ATTEMPT' | 'REJECT' | 'ABORTED' = 'SUCCESS', reason?: string): LogEntry {
         const previousHash = this.chain.length > 0 ? this.chain[this.chain.length - 1]!.hash : this.genesisHash;
         const entryHash = this.calculateHash(previousHash, intent, status);
 
@@ -42,8 +42,8 @@ export class AuditLog {
         return true;
     }
 
-    private calculateHash(prevHash: string, intent: Intent, status: string): string {
-        const data = prevHash + JSON.stringify(intent) + status;
+    private calculateHash(prevHash: string, intent: Intent, status: string, reason?: string): string {
+        const data = prevHash + JSON.stringify(intent) + status + (reason || '');
         return hash(data);
     }
 }

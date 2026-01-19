@@ -1,6 +1,8 @@
 import { StateModel } from '../L2/State.js';
 import type { Intent } from '../L2/State.js';
 import { AuditLog } from '../L5/Audit.js';
+import { verifySignature, signData, hash } from '../L0/Crypto.js';
+import type { KeyPair, Ed25519PublicKey } from '../L0/Crypto.js';
 
 export class GovernanceInterface {
     constructor(private state: StateModel, private log: AuditLog) { }
@@ -18,42 +20,75 @@ export class GovernanceInterface {
     }
 }
 
-export class AttestationAPI {
-    constructor(private log: AuditLog) { }
+export interface AttestationPacket {
+    payload: {
+        metricId: string;
+        value: any;
+        timestamp: string;
+        ledgerHash: string;
+        subjectId: string;
+    };
+    sourceKernel: string;
+    signature: string;
+}
 
-    public generateAttestation(intent: Intent) {
+export class AttestationAPI {
+    constructor(private log: AuditLog, private kernelKeys: KeyPair, private kernelId: string) { }
+
+    public generateAttestation(intent: Intent): AttestationPacket {
         const history = this.log.getHistory();
         const entry = history.find(e => e.intent.intentId === intent.intentId);
 
-        return {
+        const payload = {
             metricId: intent.payload.metricId,
             value: intent.payload.value,
             timestamp: intent.timestamp,
-            signature: intent.signature,
-            ledgerHash: entry ? entry.hash : 'unknown'
+            ledgerHash: entry ? entry.hash : 'unknown',
+            subjectId: intent.principalId
+        };
+
+        const dataToSign = JSON.stringify(payload);
+        const signature = signData(dataToSign, this.kernelKeys.privateKey);
+
+        return {
+            payload,
+            sourceKernel: this.kernelId,
+            signature: signature
         };
     }
 }
 
 export class FederationBridge {
-    private trustedPartners: Set<string> = new Set();
+    private partners: Map<string, Ed25519PublicKey> = new Map();
 
     constructor(private state: StateModel) { }
 
-    public trustPartner(partner: string) {
-        this.trustedPartners.add(partner);
+    public registerPartner(alias: string, publicKey: Ed25519PublicKey) {
+        this.partners.set(alias, publicKey);
     }
 
-    public ingestAttestation(proof: any, partner: string): boolean {
-        if (!this.trustedPartners.has(partner)) return false;
+    public ingestAttestation(packet: AttestationPacket): boolean {
+        const pubKey = this.partners.get(packet.sourceKernel);
+        if (!pubKey) {
+            console.warn(`Federation Reject: Unknown source kernel ${packet.sourceKernel}`);
+            return false;
+        }
 
-        // In a real bridge, we would verify the ledgerHash and signature here.
-        // For this implementation, we'll just apply it to the state.
+        // Verify Partner Signature (C-8: External Attestation)
+        const dataToVerify = JSON.stringify(packet.payload);
+        if (!verifySignature(dataToVerify, packet.signature, pubKey)) {
+            console.warn(`Federation Reject: Invalid Signature from ${packet.sourceKernel}`);
+            return false;
+        }
+
+        // Apply as Shadow State (Section 7.2)
         this.state.applyTrusted(
-            { metricId: proof.metricId, value: proof.value },
-            proof.timestamp,
-            `federated:${partner}`
+            { metricId: packet.payload.metricId, value: packet.payload.value },
+            packet.payload.timestamp,
+            `${packet.sourceKernel}:${packet.payload.subjectId}`,
+            `EXT_SYNC:${packet.payload.ledgerHash}`
         );
+
         return true;
     }
 }

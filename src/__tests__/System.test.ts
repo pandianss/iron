@@ -3,7 +3,7 @@ import { DeterministicTime, Budget } from '../L0/Kernel.js';
 import type { BudgetType } from '../L0/Kernel.js';
 import { generateKeyPair } from '../L0/Crypto.js';
 import type { KeyPair } from '../L0/Crypto.js';
-import { IdentityManager, DelegationEngine } from '../L1/Identity.js';
+import { IdentityManager, DelegationEngine, CapabilitySet } from '../L1/Identity.js';
 import type { Principal, Delegation } from '../L1/Identity.js';
 import { StateModel, MetricRegistry, MetricType } from '../L2/State.js';
 import { IntentFactory } from '../L2/IntentFactory.js';
@@ -33,10 +33,19 @@ describe('Iron. Operationalization (Kernel & Guards)', () => {
     beforeEach(() => {
         time = new DeterministicTime();
         adminKeys = generateKeyPair();
-        admin = { id: 'admin', publicKey: adminKeys.publicKey, type: 'INDIVIDUAL', validFrom: 0, validUntil: 9999999, rules: ['*'] };
 
         identity = new IdentityManager();
-        identity.register(admin);
+        identity.register({
+            id: 'admin',
+            publicKey: adminKeys.publicKey,
+            type: 'INDIVIDUAL',
+            scopeOf: new CapabilitySet(['*']),
+            parents: [],
+            createdAt: '0:0',
+            isRoot: true
+        });
+        admin = identity.get('admin')!;
+
         delegation = new DelegationEngine(identity);
         auditLog = new AuditLog();
         registry = new MetricRegistry();
@@ -54,8 +63,8 @@ describe('Iron. Operationalization (Kernel & Guards)', () => {
     test('Atomic Execution Flow: Attempt -> Guard -> Execute -> Outcome', () => {
         const intent = IntentFactory.create('load', 50, admin.id, adminKeys.privateKey);
 
-        const success = kernel.execute(intent);
-        expect(success).toBe(true);
+        const receipt = kernel.execute(intent);
+        expect(receipt.status).toBe('COMMITTED');
 
         // Verify L5 Log: Should have ATTEMPT and SUCCESS (from State)
         const history = auditLog.getHistory();
@@ -71,15 +80,21 @@ describe('Iron. Operationalization (Kernel & Guards)', () => {
         intent.signature = 'bad';
 
         expect(() => kernel.execute(intent)).toThrow(/Kernel Reject: Invalid Signature/);
-        expect(auditLog.getHistory().length).toBe(0);
+        expect(auditLog.getHistory().length).toBe(2);
     });
 
     test('Guard Rejection: Scope Violation', () => {
         const userKeys = generateKeyPair();
-        const user = { id: 'user', publicKey: userKeys.publicKey, type: 'INDIVIDUAL' as 'INDIVIDUAL', validFrom: 0, validUntil: 999 };
-        identity.register(user);
+        identity.register({
+            id: 'user',
+            publicKey: userKeys.publicKey,
+            type: 'INDIVIDUAL',
+            scopeOf: CapabilitySet.empty(),
+            parents: [],
+            createdAt: '0:0'
+        });
 
-        const intent = IntentFactory.create('load', 50, user.id, userKeys.privateKey);
+        const intent = IntentFactory.create('load', 50, 'user', userKeys.privateKey);
 
         expect(() => kernel.execute(intent)).toThrow(/Scope Violation/);
     });
@@ -101,12 +116,12 @@ describe('Iron. Operationalization (Kernel & Guards)', () => {
         };
         protocol.register(p2);
 
-        // Set Load > 80 to trigger both
-        state.apply(IntentFactory.create('load', 90, admin.id, adminKeys.privateKey));
+        // Set Load > 80 to trigger both via Kernel
+        const intent = IntentFactory.create('load', 90, admin.id, adminKeys.privateKey);
 
-        // Execute Protocols
+        // Execute via Kernel (Commit phase will trigger protocols and fail on conflict)
         expect(() => {
-            protocol.evaluateAndExecute(admin.id, adminKeys.privateKey, time.getNow());
+            kernel.execute(intent);
         }).toThrow(/Protocol Conflict/);
     });
 

@@ -1,4 +1,4 @@
-import { DeterministicTime, LogicalTimestamp } from '../L0/Kernel.js';
+import { LogicalTimestamp } from '../L0/Kernel.js';
 import { generateKeyPair, signData, hash } from '../L0/Crypto.js';
 import type { KeyPair } from '../L0/Crypto.js';
 import { IdentityManager } from '../L1/Identity.js';
@@ -8,13 +8,18 @@ import { ProtocolEngine } from '../L4/Protocol.js';
 import type { ProtocolBundle, Protocol } from '../L4/Protocol.js';
 import { AuditLog } from '../L5/Audit.js';
 import { IntentFactory } from '../L2/IntentFactory.js';
+import { GovernanceKernel } from '../Kernel.js';
+import { CapabilitySet, DelegationEngine } from '../L1/Identity.js';
+import { DeterministicTime } from '../L0/Kernel.js';
 
 describe('Iron. Canonical Protocol Bundles', () => {
     let identity: IdentityManager;
+    let delegation: DelegationEngine;
     let state: StateModel;
     let protocol: ProtocolEngine;
     let auditLog: AuditLog;
     let registry: MetricRegistry;
+    let kernel: GovernanceKernel;
 
     let adminKeys: KeyPair;
 
@@ -22,8 +27,17 @@ describe('Iron. Canonical Protocol Bundles', () => {
         adminKeys = generateKeyPair();
 
         identity = new IdentityManager();
-        identity.register({ id: 'self', publicKey: adminKeys.publicKey, type: 'INDIVIDUAL', validFrom: 0, validUntil: 999999, rules: ['*'] });
-        identity.register({ id: 'admin', publicKey: adminKeys.publicKey, type: 'INDIVIDUAL', validFrom: 0, validUntil: 999999, rules: ['*'] });
+        identity.register({
+            id: 'self',
+            publicKey: adminKeys.publicKey,
+            type: 'INDIVIDUAL',
+            scopeOf: new CapabilitySet(['*']),
+            parents: [],
+            createdAt: '0:0',
+            isRoot: true
+        });
+
+        delegation = new DelegationEngine(identity);
         auditLog = new AuditLog();
         registry = new MetricRegistry();
         state = new StateModel(auditLog, registry, identity);
@@ -32,6 +46,7 @@ describe('Iron. Canonical Protocol Bundles', () => {
         registry.register({ id: 'recovery', description: '', type: MetricType.GAUGE });
 
         protocol = new ProtocolEngine(state);
+        kernel = new GovernanceKernel(identity, delegation, state, protocol, auditLog, registry);
     });
 
     function sortObject(obj: any): any {
@@ -82,9 +97,11 @@ describe('Iron. Canonical Protocol Bundles', () => {
         // Load
         expect(() => protocol.loadBundle(bundle, 'self')).not.toThrow();
 
-        // Verify Outcome
-        state.apply(IntentFactory.create('stress', 90, 'self', adminKeys.privateKey, 1000));
-        protocol.evaluateAndExecute('self', adminKeys.privateKey, new LogicalTimestamp(2000, 0));
+        // Verify Outcome via Kernel
+        const intent = IntentFactory.create('stress', 90, 'self', adminKeys.privateKey, '1000:0');
+        kernel.execute(intent);
+
+        // Kernel's commitPhase triggers 'DailyRecovery' protocol -> 'recovery' = 10
         expect(state.get('recovery')).toBe(10);
     });
 

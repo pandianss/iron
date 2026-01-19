@@ -83,17 +83,19 @@ export class StateModel {
         }
     }
 
+    public validateMutation(payload: MetricPayload): void {
+        if (!payload?.metricId) throw new Error("Missing Metric ID");
+        const def = this.registry.get(payload.metricId);
+        if (!def) throw new Error(`Unknown metric: ${payload.metricId}`);
+        if (def.validator && !def.validator(payload.value)) throw new Error("Invalid Value");
+    }
+
     /**
      * Applies a state transition without signature verification.
      * Use ONLY from trusted sources (e.g., Kernel after verification, Internal Engines).
      */
     public applyTrusted(payload: MetricPayload, timestamp: string, principalId: string = 'system', intentId?: string): Intent {
-        if (!payload?.metricId) throw new Error("Missing Metric ID");
-
-        // 1. Validate Payload
-        const def = this.registry.get(payload.metricId);
-        if (!def) throw new Error(`Unknown metric: ${payload.metricId}`);
-        if (def.validator && !def.validator(payload.value)) throw new Error("Invalid Value");
+        this.validateMutation(payload);
 
         // 2. Monotonic Time Check
         const lastState = this.state.get(payload.metricId);

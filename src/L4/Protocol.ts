@@ -11,10 +11,19 @@ import { hash } from '../L0/Crypto.js';
 
 export type { Protocol, ProtocolBundle };
 
+export interface Mutation {
+    metricId: string;
+    value: any;
+}
+
 export class ProtocolEngine {
     private protocols: Map<string, Protocol> = new Map();
 
     constructor(private state: StateModel) { }
+
+    isRegistered(id: string): boolean {
+        return this.protocols.has(id);
+    }
 
     register(p: Protocol) {
         ExtensionValidator.validate(p);
@@ -97,15 +106,17 @@ export class ProtocolEngine {
         return metrics;
     }
 
-    evaluateAndExecute(authority: PrincipalId, privateKey: Ed25519PrivateKey, time: LogicalTimestamp) {
+    public evaluate(time: LogicalTimestamp, proposed?: Mutation): Mutation[] {
         const triggered: Protocol[] = [];
+        const allMutations: Mutation[] = [];
 
         for (const p of this.protocols.values()) {
-            if (this.checkPreconditions(p)) {
+            if (this.checkPreconditions(p, proposed)) {
                 triggered.push(p);
             }
         }
 
+        // Rule 7: Conflict Detection (Section 5.2/3.3)
         const targets = new Set<string>();
         for (const p of triggered) {
             const metrics = this.getActionMetrics(p);
@@ -116,17 +127,24 @@ export class ProtocolEngine {
         }
 
         for (const p of triggered) {
-            this.executeRules(p, authority, privateKey, time);
+            allMutations.push(...this.getRulesMutations(p, proposed));
         }
+
+        return allMutations;
     }
 
-    private checkPreconditions(p: Protocol): boolean {
+    private checkPreconditions(p: Protocol, proposed?: Mutation): boolean {
         for (const pr of p.preconditions) {
             if (typeof pr === 'string') continue;
             const pre = pr as Predicate;
             if (pre.type === 'METRIC_THRESHOLD') {
                 if (!pre.metricId || pre.value === undefined) continue;
-                const current = Number(this.state.get(pre.metricId));
+
+                let currentVal = this.state.get(pre.metricId);
+                if (proposed && proposed.metricId === pre.metricId) {
+                    currentVal = proposed.value;
+                }
+                const current = Number(currentVal || 0);
                 if (isNaN(current)) return false;
 
                 const thresh = Number(pre.value);
@@ -137,18 +155,22 @@ export class ProtocolEngine {
         }
         return p.preconditions.length > 0;
     }
-
-    private executeRules(p: Protocol, authority: PrincipalId, privateKey: Ed25519PrivateKey, time: LogicalTimestamp) {
+    private getRulesMutations(p: Protocol, proposed?: Mutation): Mutation[] {
+        const mutations: Mutation[] = [];
         for (const r of p.execution) {
             if (typeof r === 'string') continue;
             const rule = r as Rule;
             if (rule.type === 'MUTATE_METRIC' && rule.metricId && rule.mutation !== undefined) {
-                const current = Number(this.state.get(rule.metricId) || 0);
+                let currentVal = this.state.get(rule.metricId);
+                if (proposed && proposed.metricId === rule.metricId) {
+                    currentVal = proposed.value;
+                }
+                const current = Number(currentVal || 0);
                 const newVal = current + rule.mutation;
-                const intent = IntentFactory.create(rule.metricId, newVal, authority, privateKey, time.time + 1);
-                this.state.apply(intent);
+                mutations.push({ metricId: rule.metricId, value: newVal });
             }
         }
+        return mutations;
     }
 
     private sortObject(obj: any): any {

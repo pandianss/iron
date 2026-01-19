@@ -5,6 +5,9 @@ import { MetricRegistry, MetricType, StateModel } from '../../L2/State.js';
 import { GovernanceInterface, AttestationAPI, FederationBridge } from '../../L6/Interface.js';
 import { AuditLog } from '../../L5/Audit.js';
 
+import { generateKeyPair } from '../../L0/Crypto.js';
+import { CapabilitySet } from '../../L1/Identity.js';
+
 describe('L6 Interfaces & Federation', () => {
     let audit: AuditLog;
     let time: DeterministicTime;
@@ -14,7 +17,17 @@ describe('L6 Interfaces & Federation', () => {
     let govInterface: GovernanceInterface;
     let attestationApi: AttestationAPI;
     let bridge: FederationBridge;
-    const admin: Principal = { id: 'admin', publicKey: 'key', type: 'INDIVIDUAL', validFrom: 0, validUntil: 999999999 };
+    const adminKeys = generateKeyPair();
+    const admin: Principal = {
+        id: 'admin',
+        publicKey: adminKeys.publicKey,
+        type: 'INDIVIDUAL',
+        alive: true,
+        revoked: false,
+        scopeOf: new CapabilitySet(['*']),
+        parents: [],
+        createdAt: '0:0'
+    };
 
     beforeEach(() => {
         audit = new AuditLog();
@@ -26,7 +39,7 @@ describe('L6 Interfaces & Federation', () => {
 
         registry.register({ id: 'score', description: 'Score', type: MetricType.GAUGE });
         govInterface = new GovernanceInterface(state, audit);
-        attestationApi = new AttestationAPI(audit);
+        attestationApi = new AttestationAPI(audit, adminKeys, 'KERNEL_PROD');
         bridge = new FederationBridge(state);
     });
 
@@ -44,22 +57,31 @@ describe('L6 Interfaces & Federation', () => {
     test('Attestation API: Should generate proof', () => {
         const intent = state.applyTrusted({ metricId: 'score', value: 100 }, time.getNow().toString(), admin.id);
 
-        const proof = attestationApi.generateAttestation(intent);
-        expect(proof.value).toBe(100);
-        expect(proof.ledgerHash).toBeDefined();
-        expect(proof.ledgerHash).not.toBe('unknown');
+        const packet = attestationApi.generateAttestation(intent);
+        expect(packet.payload.value).toBe(100);
+        expect(packet.payload.ledgerHash).toBeDefined();
+        expect(packet.payload.ledgerHash).not.toBe('unknown');
     });
 
     test('Federation: Should reject untrusted partners', () => {
-        const proof = { metricId: 'score', value: 50, timestamp: '0:0', signature: 'sig', ledgerHash: 'hash' };
-        const accepted = bridge.ingestAttestation(proof, 'unknown-partner');
+        const packet = attestationApi.generateAttestation({
+            intentId: 'id',
+            principalId: 'admin',
+            payload: { metricId: 'score', value: 50 },
+            timestamp: '0:0',
+            expiresAt: '0',
+            signature: 'sig'
+        });
+        const accepted = bridge.ingestAttestation(packet);
         expect(accepted).toBe(false);
     });
 
     test('Federation: Should accept trusted partners', () => {
-        bridge.trustPartner('partner-A');
-        const proof = { metricId: 'score', value: 50, timestamp: '0:0', signature: 'sig', ledgerHash: 'hash' };
-        const accepted = bridge.ingestAttestation(proof, 'partner-A');
+        bridge.registerPartner('KERNEL_PROD', adminKeys.publicKey);
+        const intent = state.applyTrusted({ metricId: 'score', value: 50 }, time.getNow().toString(), admin.id);
+        const packet = attestationApi.generateAttestation(intent);
+
+        const accepted = bridge.ingestAttestation(packet);
         expect(accepted).toBe(true);
         expect(state.get('score')).toBe(50);
     });

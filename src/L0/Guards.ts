@@ -30,11 +30,10 @@ export const SignatureGuard: Guard<{ intent: Intent, manager: IdentityManager }>
 };
 
 // 2. Scope (Delegation)
-export const ScopeGuard: Guard<{ actor: string, resource: string, owner: string, engine: DelegationEngine }> =
-    ({ actor, resource, owner, engine }) => {
-
-        if (!engine.isAuthorized(actor, resource, owner)) {
-            return FAIL(`Scope Violation: ${actor} cannot access ${resource} of ${owner}`);
+export const ScopeGuard: Guard<{ actor: string, capability: string, engine: DelegationEngine }> =
+    ({ actor, capability, engine }) => {
+        if (!engine.authorized(actor, capability)) {
+            return FAIL(`Scope Violation: ${actor} lacks capability ${capability}`);
         }
         return OK;
     };

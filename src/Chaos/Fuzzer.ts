@@ -4,7 +4,7 @@ import { IntentFactory } from '../L2/IntentFactory.js';
 import { generateKeyPair, hash } from '../L0/Crypto.js';
 import type { Ed25519PrivateKey } from '../L0/Crypto.js';
 import { GovernanceKernel } from '../Kernel.js';
-import { IdentityManager } from '../L1/Identity.js';
+import { IdentityManager, CapabilitySet } from '../L1/Identity.js';
 import type { Principal } from '../L1/Identity.js';
 
 export class Fuzzer {
@@ -17,8 +17,16 @@ export class Fuzzer {
         console.log(`Starting Fuzzing (${iterations} iterations)...`);
 
         const keys = generateKeyPair();
-        const actor: Principal = { id: 'fuzzer', publicKey: keys.publicKey, type: 'AGENT', validFrom: 0, validUntil: 9999999999999 };
-        this.identity.register(actor);
+        this.identity.register({
+            id: 'fuzzer',
+            publicKey: keys.publicKey,
+            type: 'AGENT',
+            scopeOf: new CapabilitySet(['*']),
+            parents: [],
+            createdAt: '0:0',
+            isRoot: true
+        });
+        const actor = this.identity.get('fuzzer')!;
 
         for (let i = 0; i < iterations; i++) {
             const scenario = Math.floor(Math.random() * 4);
@@ -78,10 +86,17 @@ export class Fuzzer {
     private runRevoked(id: string, key: Ed25519PrivateKey) {
         // Create temp revoked actor
         const rKeys = generateKeyPair();
-        const rActor: Principal = { id: 'revoked', publicKey: rKeys.publicKey, type: 'AGENT', validFrom: 0, validUntil: 99999, revoked: true };
-        this.identity.register(rActor);
+        this.identity.register({
+            id: 'temp-revoked',
+            publicKey: rKeys.publicKey,
+            type: 'AGENT',
+            scopeOf: new CapabilitySet(['*']),
+            parents: [],
+            createdAt: '0:0'
+        });
+        this.identity.revoke('temp-revoked', '0:1');
 
-        const intent = IntentFactory.create('load', 0, rActor.id, rKeys.privateKey);
+        const intent = IntentFactory.create('load', 0, 'temp-revoked', rKeys.privateKey);
         try {
             this.kernel.execute(intent);
             throw new Error("Fuzzer Error: Revoked Actor Accepted!");
