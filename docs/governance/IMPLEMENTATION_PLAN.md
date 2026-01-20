@@ -66,7 +66,7 @@ This plan defines the path to full IRON compliance by implementing the formal ke
 
 ### [NEW] Phase 7: Constitutional Formalization
 
-#### [NEW] [iron5_constitution.md](file:///C:/Users/sspan/.gemini/antigravity/brain/49ee65f8-3f29-4cd6-8e93-9589403f9e25/iron5_constitution.md)
+#### [NEW] [iron_constitution.md](file:///C:/Users/sspan/.gemini/antigravity/brain/49ee65f8-3f29-4cd6-8e93-9589403f9e25/iron_constitution.md)
 - Formal codification of the IRON kernel laws and identity algebra.
 - Implementation of the **Hostile Review & Patching** protocol to ensure system closure.
 - Binding of formal annexes to the reference implementation.

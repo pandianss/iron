@@ -46,7 +46,7 @@ Implemented the user-facing interface through the `SovereignApp` controller:
 ---
 
 ### 6. Constitutional Formalization (Phase 7)
-The system's governing laws have been formally codified into the [IRON Constitution](file:///C:/Users/sspan/.gemini/antigravity/brain/49ee65f8-3f29-4cd6-8e93-9589403f9e25/iron5_constitution.md):
+The system's governing laws have been formally codified into the [IRON Constitution](file:///C:/Users/sspan/.gemini/antigravity/brain/49ee65f8-3f29-4cd6-8e93-9589403f9e25/iron_constitution.md):
 - **Closed Governance**: Codifies the absolute supremacy of the Kernel execution law.
 - **Identity Algebra Binding**: Formally binds the principal derivation rules to the constitutional text.
 - **Hostile Review & Patching**: The constitution was subjected to a [Hostile Review](file:///C:/Users/sspan/.gemini/antigravity/brain/49ee65f8-3f29-4cd6-8e93-9589403f9e25/hostile_review.md), identifying 5 critical loopholes. All loopholes (Budget rebates, Genesis paradox, Shadow identity collision, etc.) have been patched.
