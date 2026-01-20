@@ -7,7 +7,7 @@ import { generateKeyPair } from '../L0/Crypto.js';
 import { GovernanceInterface } from '../L6/Interface.js';
 import { SovereignApp } from '../L7/App.js';
 
-describe('Iron-5 L7 Application Layer', () => {
+describe('IRON L7 Application Layer', () => {
     let app: SovereignApp;
     let kernel: GovernanceKernel;
     let gateway: GovernanceInterface;

@@ -1,25 +1,25 @@
-# Iron-5 Constitution
+# IRON Constitution
 
 **(Closed Governance Operating System)**
 
 ## Preamble — Purpose and Closure
 
-Iron-5 is a closed governance operating system. It exists to make authority, obligation, and accountability mechanically enforceable for individuals and enterprises.
+IRON is a closed governance operating system. It exists to make authority, obligation, and accountability mechanically enforceable for individuals and enterprises.
 
-Iron-5 is correct if and only if:
+IRON is correct if and only if:
 1. All authority flows from identity.
 2. All effects pass through the kernel.
 3. All state change is logged.
-4. No protocol can govern Iron-5 itself.
+4. No protocol can govern IRON itself.
 
-Iron-5 SHALL be recognized as a constitutional machine. It is not a framework for development, but a law for execution. Every implementation SHALL be bound by this Constitution without exception.
+IRON SHALL be recognized as a constitutional machine. It is not a framework for development, but a law for execution. Every implementation SHALL be bound by this Constitution without exception.
 
 ---
 
 ## Article I — Constitutional Objects
 
 ### Section 1.1 — Constitutional Enumeration
-The Iron-5 system SHALL consist of exactly the following constitutional objects:
+The IRON system SHALL consist of exactly the following constitutional objects:
 1. **The Kernel** (Executive Authority)
 2. **The Identity System** (Principal Algebra)
 3. **The Governed Truth** (State Materialization)
@@ -27,7 +27,7 @@ The Iron-5 system SHALL consist of exactly the following constitutional objects:
 5. **The Protocol Capability Constitution** (Boundary Law)
 6. **The Invariant Set** (Non-Negotiable Properties)
 
-No other object, layer, service, or authority SHALL possess governing power within Iron-5.
+No other object, layer, service, or authority SHALL possess governing power within IRON.
 
 ### Section 1.2 — Supremacy and Exhaustiveness
 In case of conflict between any system element and a constitutional object, the constitutional object SHALL prevail. No additional governing object, power surface, or authority source SHALL be introduced beyond those enumerated. Any implementation admitting models not permitted by these objects is non-compliant.
@@ -37,7 +37,7 @@ In case of conflict between any system element and a constitutional object, the 
 ## Article II — The Kernel
 
 ### Section 2.1 — Sole Executive Authority
-The kernel is the constitutional core of Iron-5 and SHALL be the sole executive authority within the system. All governance, execution, and state transition SHALL be mediated exclusively by the kernel.
+The kernel is the constitutional core of IRON and SHALL be the sole executive authority within the system. All governance, execution, and state transition SHALL be mediated exclusively by the kernel.
 
 ### Section 2.2 — Exclusivity of Power
 The kernel alone SHALL be permitted to:
@@ -55,7 +55,7 @@ The kernel SHALL operate in isolation, protecting its internal state and executi
 ## Article III — Identity and Authority
 
 ### Section 3.1 — Constitutional Status of Identity
-Identity is a constitutional primitive. All authority, responsibility, and budget SHALL be bound to identities recognized by the kernel. Federated and external principals SHALL be represented exclusively through local Proxy Identities owned and managed by the local kernel. There are no implicit, virtual, or truly external identities within Iron-5.
+Identity is a constitutional primitive. All authority, responsibility, and budget SHALL be bound to identities recognized by the kernel. Federated and external principals SHALL be represented exclusively through local Proxy Identities owned and managed by the local kernel. There are no implicit, virtual, or truly external identities within IRON.
 
 ### Section 3.2 — Authority as Derivable Property
 Authority SHALL NOT be a stored possession; it is a kernel-derived property. The kernel SHALL derive effective authority solely from intrinsic scope, valid delegation, and revocation rules. Root identities established at system genesis SHALL serve as the terminal, non-revocable anchors for all derivation; their initial state MUST conform to the Invariant Set. Revocation is terminal and absorbing—no identity MAY act without currently derivable authority.
@@ -68,7 +68,7 @@ Delegation SHALL be explicit, restrictive, and monotonic. No identity MAY delega
 ## Article IV — State and Governed Truth
 
 ### Section 4.1 — Materialization of Acts
-Governed state (Truth) is the persistent materialization of all committed governance acts. Iron-5 SHALL recognize only state changes that are kernel-mediated and accountability-linked.
+Governed state (Truth) is the persistent materialization of all committed governance acts. IRON SHALL recognize only state changes that are kernel-mediated and accountability-linked.
 
 ### Section 4.2 — Exclusivity of Truth
 The Kernel SHALL be the sole authority for maintaining Governed Truth. Any representation of state that diverges from the Kernel’s internal stores is constitutionally invalid.
@@ -124,7 +124,7 @@ Every protocol SHALL be deterministic, total, and statically inspectable. Protoc
 ## Article VIII — Closure and Supremacy
 
 ### Section 8.1 — Closure Law
-The Iron-5 system is closed. No operator MAY create new authority surfaces, bypass execution flow, or modify logs. Any system failing these constraints is NOT Iron-5.
+The IRON system is closed. No operator MAY create new authority surfaces, bypass execution flow, or modify logs. Any system failing these constraints is NOT IRON.
 
 ### Section 8.2 — Interpretation
 In cases of conflict, the most restrictive interpretation of this Constitution SHALL prevail. The **Annex A Formal Model** SHALL be the final arbiter of correctness; the Reference Kernel Implementation exists only to realize that model. Mechanical divergence of the implementation from the formal model renders the implementation constitutionally invalid.
@@ -137,7 +137,7 @@ In cases of conflict, the most restrictive interpretation of this Constitution S
 Only clarifications, formalizations, and corrections of inconsistency are admissible. No amendment MAY expand the governing surface or grant new powers to any component.
 
 ### Section 9.2 — Closure Clause
-This Constitution establishes the terminal governance boundaries for Iron-5. It is a standalone constitutional object, fixed and closed.
+This Constitution establishes the terminal governance boundaries for IRON. It is a standalone constitutional object, fixed and closed.
 
 ---
 

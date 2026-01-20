@@ -1,7 +1,7 @@
 import { IdentityManager, DelegationEngine, CapabilitySet } from '../Identity.js';
 import { generateKeyPair, signData } from '../../L0/Crypto.js';
 
-describe('Iron-5 Identity Algebra', () => {
+describe('IRON Identity Algebra', () => {
     let im: IdentityManager;
     let de: DelegationEngine;
     const now = '1000:0';

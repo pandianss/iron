@@ -7,7 +7,7 @@ import { IntentFactory } from '../L2/IntentFactory.js';
 import { generateKeyPair } from '../L0/Crypto.js';
 import { Budget } from '../L0/Kernel.js';
 
-describe('Iron-5 Compliance (Section 8)', () => {
+describe('IRON Compliance (Section 8)', () => {
     let kernel: GovernanceKernel;
     let auditLog: AuditLog;
     let state: StateModel;

@@ -72,7 +72,7 @@ export class GovernanceKernel {
             return 'REJECTED';
         }
 
-        // 2. Resolve Authority (Iron-5 Algebra Section 8)
+        // 2. Resolve Authority (IRON Algebra Section 8)
         const targetMetric = attempt.intent.payload.metricId;
         const scopeResult = ScopeGuard({
             actor: attempt.actor,

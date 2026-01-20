@@ -7,7 +7,7 @@ import { IntentFactory } from '../L2/IntentFactory.js';
 import { generateKeyPair } from '../L0/Crypto.js';
 import { AttestationAPI, FederationBridge } from '../L6/Interface.js';
 
-describe('Iron-5 Federation Bridge', () => {
+describe('IRON Federation Bridge', () => {
     // KERNEL A (Source of Truth)
     let kernelA: GovernanceKernel;
     let stateA: StateModel;

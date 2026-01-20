@@ -1,6 +1,6 @@
-# Iron-5 Formal Specification
+# IRON Formal Specification
 
-This document contains the TLA+ and Alloy specifications that define the non-negotiable correctness properties of the Iron-5 Governance OS.
+This document contains the TLA+ and Alloy specifications that define the non-negotiable correctness properties of the IRON Governance OS.
 
 ## Part A — TLA+ Specification (Safety-Oriented)
 

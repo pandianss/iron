@@ -1,6 +1,6 @@
-# Iron-5 Reference Kernel Implementation
+# IRON Reference Kernel Implementation
 
-This walkthrough demonstrates the successful implementation of the Iron-5 Reference Kernel Implementation Contract. The system has been refactored to enforce the Formal Execution Law, Centralized Identity Algebra, and the Protocol Sandbox.
+This walkthrough demonstrates the successful implementation of the IRON Reference Kernel Implementation Contract. The system has been refactored to enforce the Formal Execution Law, Centralized Identity Algebra, and the Protocol Sandbox.
 
 ## Key Accomplishments
 
@@ -11,7 +11,7 @@ The `GovernanceKernel` now strictly follows the three-stage execution flow defin
 - **`commitAttempt`**: Implements a two-phase commit with dry-run validation to ensure atomicity.
 
 ### 2. Identity Algebra (L1)
-Implemented the core components and invariants of the Iron-5 Identity system:
+Implemented the core components and invariants of the IRON Identity system:
 - **Capability Lattice**: Hierarchical permissions with wildcard support (`*`, `PREFIX:*`).
 - **Identity Manager**: Enforces invariants I-1 to I-4 (Root immutability, No resurrection, Monotonicity, and Acyclic provenance).
 - **Delegation Engine**: Implements `EffectiveScope` derivation and authority propagation logic.
@@ -46,7 +46,7 @@ Implemented the user-facing interface through the `SovereignApp` controller:
 ---
 
 ### 6. Constitutional Formalization (Phase 7)
-The system's governing laws have been formally codified into the [Iron-5 Constitution](file:///C:/Users/sspan/.gemini/antigravity/brain/49ee65f8-3f29-4cd6-8e93-9589403f9e25/iron5_constitution.md):
+The system's governing laws have been formally codified into the [IRON Constitution](file:///C:/Users/sspan/.gemini/antigravity/brain/49ee65f8-3f29-4cd6-8e93-9589403f9e25/iron5_constitution.md):
 - **Closed Governance**: Codifies the absolute supremacy of the Kernel execution law.
 - **Identity Algebra Binding**: Formally binds the principal derivation rules to the constitutional text.
 - **Hostile Review & Patching**: The constitution was subjected to a [Hostile Review](file:///C:/Users/sspan/.gemini/antigravity/brain/49ee65f8-3f29-4cd6-8e93-9589403f9e25/hostile_review.md), identifying 5 critical loopholes. All loopholes (Budget rebates, Genesis paradox, Shadow identity collision, etc.) have been patched.
