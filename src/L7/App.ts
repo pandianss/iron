@@ -1,4 +1,3 @@
-import { GovernanceKernel } from '../Kernel.js';
 import { GovernanceInterface } from '../L6/Interface.js';
 import { IntentFactory } from '../L2/IntentFactory.js';
 import type { Ed25519PublicKey, Ed25519PrivateKey } from '../L0/Crypto.js';
@@ -24,7 +23,6 @@ export class SovereignApp {
     private session: UserSession | null = null;
 
     constructor(
-        private kernel: GovernanceKernel,
         private gateway: GovernanceInterface
     ) { }
 
@@ -49,14 +47,14 @@ export class SovereignApp {
             timestamp
         );
 
-        // Execute via Kernel
-        const attempt = this.kernel.execute(intent);
+        // Execute via Interface (L6)
+        const commit = this.gateway.submit(intent);
 
         return {
             actionId,
-            txId: attempt.attemptId,
-            timestamp: attempt.timestamp,
-            status: attempt.status
+            txId: commit.attemptId,
+            timestamp: commit.timestamp,
+            status: commit.status
         };
     }
 

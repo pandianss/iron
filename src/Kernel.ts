@@ -20,8 +20,11 @@ export interface Attempt {
     status: AttemptStatus;
 }
 
-export interface CommitReceipt {
+export interface Commit {
     attemptId: AttemptID;
+    oldStateHash: string; // From Audit Lineage
+    newStateHash: string; // From Audit Lineage
+    cost: number;
     timestamp: string;
     status: 'COMMITTED';
 }
@@ -38,7 +41,11 @@ export class GovernanceKernel {
         private registry: MetricRegistry
     ) { }
 
-    // 3.1 Submit Attempt
+    public get State() { return this.state; }
+    public get Registry() { return this.registry; }
+    public get Protocols() { return this.protocols; } // Capitalized to denote Accessor
+
+    // 3.1 Submit Attempt (Input)
     public submitAttempt(
         actor: string,
         protocolId: string,
@@ -46,7 +53,7 @@ export class GovernanceKernel {
         cost: Nat = 1
     ): AttemptID {
         const attempt: Attempt = {
-            id: intent.intentId, // Use Intent ID as base Attempt ID for binding
+            id: intent.intentId,
             actor,
             protocolId,
             intent,
@@ -60,19 +67,22 @@ export class GovernanceKernel {
         return attempt.id;
     }
 
-    // 3.2 Guard Attempt (Pure Validation)
+    // 3.2 Guard Attempt (Invariant I: Authority)
     public guardAttempt(attemptId: AttemptID): 'ACCEPTED' | 'REJECTED' {
         const attempt = this.attempts.get(attemptId);
         if (!attempt) throw new Error("Kernel Error: Attempt not found");
 
-        // 1. Signature Verify
+        // Invariant I: The Authority Conservation Law
+        // Authority = Signature (Identity) + Delegation (Scope)
+
+        // I.a Signature Check
         const sigResult = SignatureGuard({ intent: attempt.intent, manager: this.identity });
         if (!sigResult.ok) {
-            this.reject(attempt, sigResult.violation);
+            this.reject(attempt, `Authority Violation: Invalid Signature (${sigResult.violation})`);
             return 'REJECTED';
         }
 
-        // 2. Resolve Authority (IRON Algebra Section 8)
+        // I.b Scope Check (Algebra)
         const targetMetric = attempt.intent.payload.metricId;
         const scopeResult = ScopeGuard({
             actor: attempt.actor,
@@ -80,13 +90,13 @@ export class GovernanceKernel {
             engine: this.delegation
         });
         if (!scopeResult.ok) {
-            this.reject(attempt, scopeResult.violation);
+            this.reject(attempt, `Authority Violation: Insufficient Scope (${scopeResult.violation})`);
             return 'REJECTED';
         }
 
-        // 3. Protocol Validation (Section 3.2)
+        // Protocol Binding Law (Invariant IV)
         if (!this.protocols.isRegistered(attempt.protocolId) && attempt.protocolId !== 'SYSTEM') {
-            this.reject(attempt, "Protocol not installed");
+            this.reject(attempt, "Protocol Binding Violation: Protocol not registered");
             return 'REJECTED';
         }
 
@@ -94,20 +104,19 @@ export class GovernanceKernel {
         return 'ACCEPTED';
     }
 
-    // 3.3 Commit Attempt (Atomic Mutation)
-    public commitAttempt(attemptId: AttemptID, budget: Budget): CommitReceipt {
+    // 3.3 Commit Attempt (Invariant II & III)
+    public commitAttempt(attemptId: AttemptID, budget: Budget): Commit {
         const attempt = this.attempts.get(attemptId);
         if (!attempt || attempt.status !== 'ACCEPTED') {
             throw new Error(`Kernel Error: Attempt ${attemptId} not in ACCEPTED state`);
         }
 
-        // 4. Budget Verify (Reserved at Commit Start)
+        // Invariant II: Budget Conservation Law
         const budResult = BudgetGuard({ budget, cost: attempt.cost });
-        if (!budResult.ok) throw new Error(`Kernel Reject: ${budResult.violation}`);
+        if (!budResult.ok) throw new Error(`Kernel Reject: Budget Violation (${budResult.violation})`);
 
         try {
-            // 2-PHASE COMMIT (Section 3.3)
-            // Phase 1: Evaluation (Sandbox)
+            // 1. Protocol Execution (Strict Determinism)
             const mutations: Mutation[] = [
                 { metricId: attempt.intent.payload.metricId, value: attempt.intent.payload.value }
             ];
@@ -115,14 +124,16 @@ export class GovernanceKernel {
             const sideEffects = this.protocols.evaluate(attempt.timestamp, mutations[0]);
             mutations.push(...sideEffects);
 
-            // Phase 2: Dry Run (Validation Only)
+            // 2. State Validation
             for (const m of mutations) {
                 this.state.validateMutation(m);
             }
 
-            // ATOMIC BOUNDARY (Section 3.3)
+            // ATOMIC COMMIT BOUNDARY
+            // ---------------------
             budget.consume(attempt.cost);
 
+            // Apply Mutations
             for (const m of mutations) {
                 this.state.applyTrusted(
                     m,
@@ -134,63 +145,48 @@ export class GovernanceKernel {
 
             attempt.status = 'COMMITTED';
 
-            return {
+            // Invariant III: Lineage Immutability Law
+            // Capture the hash chain from the Audit Log
+            const logEntry = this.audit.append(attempt.intent, 'SUCCESS');
+
+            const commit: Commit = {
                 attemptId: attempt.id,
+                oldStateHash: logEntry.previousHash,
+                newStateHash: logEntry.hash, // The cryptographically committed state
+                cost: attempt.cost,
                 timestamp: attempt.intent.timestamp,
                 status: 'COMMITTED'
             };
 
+            return commit;
+
         } catch (e: any) {
             attempt.status = 'ABORTED';
+            this.audit.append(attempt.intent, 'ABORTED', e.message);
             throw new Error(`Kernel Halt: Commit Failed: ${e.message}`);
         }
     }
 
-    // 3.4 Identity Kernel APIs (Governance transitions)
+    // --- Governance API (Privileged) ---
 
     public createIdentity(actor: string, params: any): void {
         this.checkGovernanceAuth(actor, 'IDENTITY.CREATE');
         this.identity.register(params);
-        this.audit.append({
-            intentId: `gov:create:${params.id}`,
-            principalId: actor,
-            payload: { metricId: 'system.identity', value: params },
-            timestamp: this.state.getHistory('system.identity')[0]?.updatedAt || '0:0', // Placeholder
-            expiresAt: '0',
-            signature: 'GOV'
-        } as any, 'SUCCESS');
+        this.audit.append(this.createSystemIntent(actor, 'system.identity', params), 'SUCCESS');
     }
 
     public grantDelegation(actor: string, granter: string, grantee: string, scope: string[], expiresAt: number): void {
         this.checkGovernanceAuth(actor, 'IDENTITY.DELEGATE');
-
-        // Use DelegationEngine to handle formal 5.1/5.2 checks internally or here
-        const sig = 'GOVERNANCE_SIGNATURE'; // In a real system, this would be signed by the Kernel
+        const sig = 'GOVERNANCE_SIGNATURE';
         this.delegation.grant(granter, grantee, new CapabilitySet(scope), expiresAt.toString(), sig);
-
-        this.audit.append({
-            intentId: `gov:grant:${granter}:${grantee}`,
-            principalId: actor,
-            payload: { metricId: 'system.delegation', value: { granter, grantee, scope } },
-            timestamp: '0:0',
-            expiresAt: expiresAt.toString(),
-            signature: 'GOV'
-        } as any, 'SUCCESS');
+        this.audit.append(this.createSystemIntent(actor, 'system.delegation', { granter, grantee, scope }), 'SUCCESS');
     }
 
     public revokeIdentity(actor: string, targetId: string): void {
         this.checkGovernanceAuth(actor, 'IDENTITY.REVOKE');
-        const timestamp = '0:0'; // In a real system, use TimeStore.now()
+        const timestamp = '0:0';
         this.identity.revoke(targetId, timestamp);
-
-        this.audit.append({
-            intentId: `gov:revoke:${targetId}`,
-            principalId: actor,
-            payload: { metricId: 'system.revocation', value: { targetId } },
-            timestamp: timestamp,
-            expiresAt: '0',
-            signature: 'GOV'
-        } as any, 'SUCCESS');
+        this.audit.append(this.createSystemIntent(actor, 'system.revocation', { targetId }), 'SUCCESS');
     }
 
     private checkGovernanceAuth(actor: string, action: string) {
@@ -204,24 +200,26 @@ export class GovernanceKernel {
         this.audit.append(attempt.intent, 'REJECT', reason);
     }
 
-    // Legacy support for single-shot execution
-    public execute(intent: Intent, budget?: Budget): CommitReceipt {
+    private createSystemIntent(actor: string, metric: string, value: any): Intent {
+        return {
+            intentId: `sys:${Date.now()}:${Math.random()}`, // Non-deterministic, but system generated
+            principalId: actor,
+            payload: { metricId: metric, value },
+            timestamp: '0:0',
+            expiresAt: '0',
+            signature: 'SYSTEM'
+        } as any;
+    }
+
+    // Legacy support wrapper
+    public execute(intent: Intent, budget?: Budget): Commit {
         const aid = this.submitAttempt(intent.principalId, 'SYSTEM', intent);
 
         const guardStatus = this.guardAttempt(aid);
         if (guardStatus === 'REJECTED') {
-            const sigResult = SignatureGuard({ intent, manager: this.identity });
-            if (!sigResult.ok) throw new Error(`Kernel Reject: ${sigResult.violation}`);
-
-            const targetMetric = intent.payload.metricId;
-            const scopeResult = ScopeGuard({
-                actor: intent.principalId,
-                capability: `METRIC.WRITE:${targetMetric}`,
-                engine: this.delegation
-            });
-            if (!scopeResult.ok) throw new Error(`Kernel Reject: ${scopeResult.violation}`);
-
-            throw new Error(`Kernel Reject: Guard failed`);
+            const attempt = this.attempts.get(aid);
+            // Re-throw the specific rejection reason if possible, or generic
+            throw new Error(`Kernel Reject: Attempt rejected during guard phase.`);
         }
 
         const b = budget || new Budget('ENERGY' as any, 100);

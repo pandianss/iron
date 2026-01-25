@@ -3,9 +3,15 @@ import type { Intent } from '../L2/State.js';
 import { AuditLog } from '../L5/Audit.js';
 import { verifySignature, signData, hash } from '../L0/Crypto.js';
 import type { KeyPair, Ed25519PublicKey } from '../L0/Crypto.js';
+import { GovernanceKernel } from '../Kernel.js';
+import { Budget, BudgetType } from '../L0/Kernel.js';
 
 export class GovernanceInterface {
-    constructor(private state: StateModel, private log: AuditLog) { }
+    constructor(
+        private kernel: GovernanceKernel,
+        private state: StateModel,
+        private log: AuditLog
+    ) { }
 
     public getTruth(id: string) { return this.state.get(id); }
 
@@ -17,6 +23,12 @@ export class GovernanceInterface {
                 timestamp: e.intent.timestamp,
                 proof: e.hash
             }));
+    }
+
+    // The Single Door: All Writes must go through Kernel
+    public submit(intent: Intent, options: { budgetLimit?: number } = {}) {
+        const budget = new Budget(BudgetType.ENERGY, options.budgetLimit || 100);
+        return this.kernel.execute(intent, budget);
     }
 }
 
@@ -61,7 +73,10 @@ export class AttestationAPI {
 export class FederationBridge {
     private partners: Map<string, Ed25519PublicKey> = new Map();
 
-    constructor(private state: StateModel) { }
+    constructor(
+        private kernel: GovernanceKernel,
+        private bridgeIdentity: { id: string; key: KeyPair }
+    ) { }
 
     public registerPartner(alias: string, publicKey: Ed25519PublicKey) {
         this.partners.set(alias, publicKey);
@@ -81,14 +96,49 @@ export class FederationBridge {
             return false;
         }
 
-        // Apply as Shadow State (Section 7.2)
-        this.state.applyTrusted(
-            { metricId: packet.payload.metricId, value: packet.payload.value },
-            packet.payload.timestamp,
-            `${packet.sourceKernel}:${packet.payload.subjectId}`,
-            `EXT_SYNC:${packet.payload.ledgerHash}`
-        );
+        // Construct Synthetic Intent signed by Bridge
+        // The Bridge attests: "I verified X from Y"
+        const intentId = hash(`ext:${packet.sourceKernel}:${packet.payload.ledgerHash}`);
 
-        return true;
+        // We need to sign exactly what IntentFactory would sign or what Guard expects.
+        // Guard expects: data = `${intentId}:${principalId}:${JSON.stringify(payload)}:${timestamp}:${expiresAt}`;
+        const payload = {
+            metricId: packet.payload.metricId,
+            value: packet.payload.value,
+            _meta: { source: packet.sourceKernel, proof: packet.payload.ledgerHash }
+        };
+        const timestamp = packet.payload.timestamp;
+        const expiresAt = '0';
+        const principalId = this.bridgeIdentity.id;
+
+        const dataToSign = `${intentId}:${principalId}:${JSON.stringify(payload)}:${timestamp}:${expiresAt}`;
+        const signature = signData(dataToSign, this.bridgeIdentity.key.privateKey);
+
+        const foreignIntent: Intent = {
+            intentId,
+            principalId,
+            payload,
+            timestamp,
+            expiresAt,
+            signature
+        };
+
+        try {
+            const aid = this.kernel.submitAttempt(principalId, 'SYSTEM', foreignIntent);
+
+            const guard = this.kernel.guardAttempt(aid);
+            if (guard === 'REJECTED') {
+                // Peek at audit log or get reason? Kernel doesn't return reason on guardAttempt.
+                // But we can check status? No, attempt is now REJECTED.
+                console.warn(`Federation Sync Rejected by Kernel Guard. Check Audit Log.`);
+                return false;
+            }
+
+            this.kernel.commitAttempt(aid, new Budget(BudgetType.ENERGY, 100));
+            return true;
+        } catch (e) {
+            console.warn(`Federation Sync Failed:`, e);
+            return false;
+        }
     }
 }

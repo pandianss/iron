@@ -1,104 +1,84 @@
-import { DeterministicTime } from '../../L0/Kernel.js';
-import { IdentityManager } from '../../L1/Identity.js';
-import type { Principal } from '../../L1/Identity.js';
-import { MetricRegistry, MetricType, StateModel } from '../../L2/State.js';
-import { SimulationEngine, HybridStrategyEngine } from '../../L3/Simulation.js';
-import type { Action } from '../../L3/Simulation.js';
-import { AuditLog } from '../../L5/Audit.js';
-import { ProtocolEngine } from '../../L4/Protocol.js';
 
-describe('L3 Action & Simulation', () => {
-    let audit: AuditLog;
-    let time: DeterministicTime;
-    let registry: MetricRegistry;
-    let identity: IdentityManager;
+import { describe, test, expect, beforeEach } from '@jest/globals';
+import { StateModel, MetricRegistry, MetricType } from '../../L2/State.js';
+import { ProtocolEngine } from '../../L4/Protocol.js';
+import { AuditLog } from '../../L5/Audit.js';
+import { IdentityManager, CapabilitySet } from '../../L1/Identity.js';
+import { SimulationEngine, MonteCarloEngine } from '../Simulation.js';
+
+describe('L3 Simulation Engine (Stochastic)', () => {
+    let sim: SimulationEngine;
+    let monteCarlo: MonteCarloEngine;
     let state: StateModel;
-    let protocols: ProtocolEngine;
-    let simEngine: SimulationEngine;
-    const admin: Principal = { id: 'admin', publicKey: 'key', type: 'INDIVIDUAL', validFrom: 0, validUntil: 999999999 };
+    let registry: MetricRegistry;
 
     beforeEach(() => {
-        audit = new AuditLog();
-        time = new DeterministicTime();
+        const audit = new AuditLog();
         registry = new MetricRegistry();
-        identity = new IdentityManager();
-        identity.register(admin);
+        const identity = new IdentityManager();
+        identity.register({ id: 'sys', publicKey: 'key', type: 'AGENT', scopeOf: new CapabilitySet(['*']), parents: [], createdAt: '0:0', isRoot: true });
+
         state = new StateModel(audit, registry, identity);
-        protocols = new ProtocolEngine(state);
+        const protocols = new ProtocolEngine(state);
 
-        registry.register({
-            id: 'system.load',
-            description: 'System Load Average',
-            type: MetricType.GAUGE
-        });
+        sim = new SimulationEngine(registry, protocols);
+        monteCarlo = new MonteCarloEngine(sim);
 
-        simEngine = new SimulationEngine(registry, protocols);
+        registry.register({ id: 'cash', description: 'Cash Flow', type: MetricType.GAUGE });
     });
 
-    test('Simulation Equivalence: No action should match baseline', () => {
-        // Seed state
-        state.applyTrusted({ metricId: 'system.load', value: 10 }, time.getNow().toString(), admin.id);
-        state.applyTrusted({ metricId: 'system.load', value: 20 }, time.getNow().toString(), admin.id);
+    test('Monte Carlo should capture variance', () => {
+        // Setup history (Stable trend: 100, 100, 100)
+        // With Action (+10) -> Expect 110.
+        // With Volatility -> Expect distribution.
 
-        // Run Sim with null action
-        const forecast = simEngine.run(state, null, 1);
+        state.applyTrusted({ metricId: 'cash', value: 100 }, '0:0', 'sys');
+        state.applyTrusted({ metricId: 'cash', value: 100 }, '1:0', 'sys');
+        state.applyTrusted({ metricId: 'cash', value: 100 }, '2:0', 'sys');
 
-        // Manual forecast (same as L2 test) -> 30
-        expect(forecast?.predictedValue).toBeCloseTo(30);
-    });
-
-    test('Impact Proving: Action should alter forecast', () => {
-        // Seed state: 10, 20. Trend is +10/tick. Next is 30.
-        state.applyTrusted({ metricId: 'system.load', value: 10 }, time.getNow().toString(), admin.id);
-        state.applyTrusted({ metricId: 'system.load', value: 20 }, time.getNow().toString(), admin.id);
-
-        // Action: Reduce load by 5 (immediately)
-        // Effectively, the simulation sees: 10, 20, (20-5=15).
-        // New History: 10, 20, 15.
-        // Points: (0,10), (1,20), (2,15).
-        // Regression on these 3 points.
-        // x: 0, 1, 2
-        // y: 10, 20, 15
-        // Trend will be flattened significantly.
-
-        const action: Action = {
-            id: 'cool-down',
-            description: 'Reduce load',
-            targetMetricId: 'system.load',
-            valueMutation: -5
+        const action = {
+            id: 'invest',
+            description: 'Invest',
+            targetMetricId: 'cash',
+            valueMutation: 10 // Base mutation
         };
 
-        const forecast = simEngine.run(state, action, 1);
+        // Run Monte Carlo with High Volatility (0.5 = 50% variance on mutation)
+        const risk = monteCarlo.simulate(state, action, 10, 100, 0.5);
 
-        // Without action, next is 30.
-        // With action (15 at t=2), next (t=3) will be...
-        // 10->20 is +10. 20->15 is -5.
-        // Avg slope is smaller.
-        // Visual: 10...20...15. Downward hook.
-        // Prediction should be < 30.
+        // Debug output
+        console.log("Monte Carlo Result:", risk);
 
-        expect(forecast?.predictedValue).toBeLessThan(30);
+        expect(risk.metricId).toBe('cash');
+        // Trend is Positive (100 -> 110). Linear Regression Extrapolates.
+        // Mean should be > 130 given the slope.
+        expect(risk.meanPredictedValue).toBeGreaterThan(130);
+
+        // P10 and P90 should differ due to volatility
+        expect(risk.p90).not.toBe(risk.p10);
+        expect(risk.p90).toBeGreaterThan(risk.p10);
     });
 
-    test('Hybrid Strategy: Compare Baseline vs Sim', () => {
-        state.applyTrusted({ metricId: 'system.load', value: 10 }, time.getNow().toString(), admin.id);
-        state.applyTrusted({ metricId: 'system.load', value: 20 }, time.getNow().toString(), admin.id);
+    test('Scenario should detect Failure Probability (Bankruptcy)', () => {
+        // Setup: Low Cash (10). Action: -8 cost.
+        // Volatility 0.5 (50%). Expected cost could be -12 (Bankruptcy) or -4 (Safe).
+        state.applyTrusted({ metricId: 'cash', value: 10 }, '0:0', 'sys');
+        state.applyTrusted({ metricId: 'cash', value: 10 }, '1:0', 'sys');
 
-        const strategy = new HybridStrategyEngine(simEngine);
-        const action: Action = {
-            id: 'boost',
-            description: 'Boost',
-            targetMetricId: 'system.load',
-            valueMutation: 10
+        const riskyAction = {
+            id: 'gamble',
+            description: 'Gamble',
+            targetMetricId: 'cash',
+            valueMutation: -8
         };
-        // 10, 20 -> 30 (Baseline)
-        // 10, 20 -> (20+10=30) -> 10, 20, 30 linear.
-        // Next (t=3) -> 40.
 
-        const result = strategy.compare(state, action, 1);
+        const risk = monteCarlo.simulate(state, riskyAction, 1, 100, 0.5);
 
-        expect(result.baseline?.predictedValue).toBeCloseTo(30);
-        expect(result.simulated?.predictedValue).toBeCloseTo(40);
-        expect(result.delta).toBeCloseTo(10);
+        console.log("Bankruptcy Probability:", risk.probabilityOfFailure);
+
+        // Some runs should result in < 0 (10 - 12 = -2)
+        // Some runs should result in > 0 (10 - 4 = 6)
+        expect(risk.probabilityOfFailure).toBeGreaterThan(0);
+        expect(risk.probabilityOfFailure).toBeLessThan(1);
     });
 });

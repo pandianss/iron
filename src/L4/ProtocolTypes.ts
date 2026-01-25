@@ -6,6 +6,21 @@ import type { PrincipalId } from '../L1/Identity.js';
 
 export type ProtocolCategory = 'Intent' | 'Habit' | 'Budget' | 'Authority' | 'Accountability' | 'Risk';
 
+// --- v1.0 Commercial Standard ---
+
+export type SemanticVersion = string; // e.g., "1.0.0"
+
+export interface EconomicModel {
+    gas: number; // Computational cost (e.g., 1-100)
+    price?: {
+        amount: number;
+        currency: 'USD' | 'IRON' | 'COMPUTE';
+        model: 'PER_CALL' | 'SUBSCRIPTION';
+    };
+}
+
+export type SafetyGrade = 'UNVERIFIED' | 'AUDITED' | 'CERTIFIED';
+
 export interface Validity {
     from: number;
     until?: number;
@@ -49,9 +64,13 @@ export interface RevocationDef {
 export interface Protocol {
     id?: string;
     name: string;
-    version?: string;
+    version: SemanticVersion;
+
+    // Commercial Props
     category: ProtocolCategory;
     author?: string;
+    economics?: EconomicModel;
+    safety?: SafetyGrade;
 
     validity?: Validity;
     scope?: Scope;

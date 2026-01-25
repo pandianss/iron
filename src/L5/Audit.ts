@@ -8,6 +8,7 @@ export interface LogEntry {
     previousHash: string;
     intent: Intent;
     status: 'SUCCESS' | 'FAILURE' | 'ATTEMPT' | 'REJECT' | 'ABORTED';
+    reason?: string;
 }
 
 export class AuditLog {
@@ -16,13 +17,14 @@ export class AuditLog {
 
     public append(intent: Intent, status: 'SUCCESS' | 'FAILURE' | 'ATTEMPT' | 'REJECT' | 'ABORTED' = 'SUCCESS', reason?: string): LogEntry {
         const previousHash = this.chain.length > 0 ? this.chain[this.chain.length - 1]!.hash : this.genesisHash;
-        const entryHash = this.calculateHash(previousHash, intent, status);
+        const entryHash = this.calculateHash(previousHash, intent, status, reason);
 
         const entry: LogEntry = {
             hash: entryHash,
             previousHash: previousHash,
             intent: intent,
-            status: status
+            status: status,
+            ...(reason ? { reason } : {})
         };
 
         this.chain.push(entry);
