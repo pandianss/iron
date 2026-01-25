@@ -4,7 +4,7 @@ import { IdentityManager, AuthorityEngine } from './L1/Identity.js';
 import { ProtocolEngine } from './L4/Protocol.js';
 import type { Mutation } from './L4/Protocol.js';
 import { AuditLog } from './L5/Audit.js';
-import { SignatureGuard, ScopeGuard, TimeGuard, BudgetGuard } from './L0/Guards.js';
+import { SignatureGuard, ScopeGuard, TimeGuard, BudgetGuard, InvariantGuard } from './L0/Guards.js';
 import { Budget, LogicalTimestamp } from './L0/Kernel.js';
 import type { KernelState, EntityID, ActionID, CapacityID, JurisdictionID } from './L0/Ontology.js';
 
@@ -124,8 +124,16 @@ export class GovernanceKernel {
         const attempt = this.attempts.get(attemptId);
         if (!attempt) throw new Error("Kernel Error: Attempt not found");
 
+        // 0. Invariant Guard (Illegal State Rejection)
+        const invResult = InvariantGuard({ action: attempt.action, manager: this.identity });
+        if (!invResult.ok) {
+            const reason = `Invariant Violation: ${invResult.violation}`;
+            this.reject(attempt, reason, { violationType: 'INVARIANT_FAILURE' });
+            return { status: 'REJECTED', reason };
+        }
+
         // 1. Signature Guard (Identity Resolution)
-        const sigResult = SignatureGuard({ intent: attempt.action as any, manager: this.identity as any });
+        const sigResult = SignatureGuard({ intent: attempt.action, manager: this.identity });
         if (!sigResult.ok) {
             const reason = `Authority Violation: Invalid Signature (${sigResult.violation})`;
             this.reject(attempt, reason);

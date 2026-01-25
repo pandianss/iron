@@ -70,6 +70,13 @@ export interface GovernedState {
     derivationHistory: string; // EvidenceID link
 }
 
+export type CanonicalTuple = [
+    number, // version
+    string, // lastActionId
+    string, // timestamp
+    string  // stateRootHash
+];
+
 // --- 7. Protocol ---
 export type ProtocolID = string;
 export interface Protocol {

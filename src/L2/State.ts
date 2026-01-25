@@ -125,6 +125,11 @@ export class StateModel {
 
     public validateMutation(payload: ActionPayload): void {
         if (!payload?.metricId) throw new Error("Missing Metric ID");
+
+        // Anti-Prototype Pollution
+        const reserved = ['__proto__', 'prototype', 'constructor'];
+        if (reserved.includes(payload.metricId)) throw new Error("Illegal Metric ID: Reserved Keyword");
+
         const def = this.registry.get(payload.metricId);
         if (!def) throw new Error(`Unknown metric: ${payload.metricId}`);
         if (def.validator && !def.validator(payload.value)) throw new Error("Invalid Value");
@@ -187,10 +192,21 @@ export class StateModel {
         const globalStateParams = allMetrics.map(([k, v]) => `${k}:${v.stateHash}`).join('|');
         const globalRoot = hashState(Buffer.from(globalStateParams + finalState.version));
 
+        // 5b. Canonicalization (Phase 3 Strictness)
+        // [Version, ActionID, Timestamp, RootHash]
+        const canonical: [number, string, string, string] = [
+            finalState.version,
+            validActionId,
+            timestamp,
+            globalRoot
+        ];
+        // The Snapshot Hash is now the hash of this Tuple, enforcing strict structure
+        const snapshotHash = hash(JSON.stringify(canonical));
+
         // 6. Create Snapshot
         const snapshot: StateSnapshot = {
             state: finalState,
-            hash: globalRoot,
+            hash: snapshotHash,
             previousHash: previousSnapshot.hash,
             actionId: validActionId
         };
@@ -204,9 +220,6 @@ export class StateModel {
 
         return action;
     }
-
-    public get(id: string) { return this.currentState.metrics[id]?.value; }
-    public getHistory(id: string) { return this.historyCache.get(id) || []; }
 
     public verifyIntegrity(): boolean {
         for (let i = 1; i < this.snapshots.length; i++) {
@@ -222,7 +235,22 @@ export class StateModel {
             const globalStateParams = allMetrics.map(([k, v]) => `${k}:${v.stateHash}`).join('|');
             const globalRoot = hashState(Buffer.from(globalStateParams + curr.state.version));
 
-            if (globalRoot !== curr.hash) return false;
+            // Canonical Check (Phase 3)
+            const canonical: [number, string, string, string] = [
+                curr.state.version,
+                curr.actionId,
+                curr.state.lastUpdate, // Approximate timestamp link
+                globalRoot
+            ];
+
+            // Note: Timestamp in canonical tuple comes from the Action input (applyTrusted args), 
+            // but stored in StateSnapshot logic only implicitly via state updates?
+            // Actually, applyTrusted uses `timestamp` arg for tuple, but `state.lastUpdate` is set to it.
+            // So reconstruction is valid if state.lastUpdate == action timestamp.
+
+            const expectedHash = hash(JSON.stringify(canonical));
+
+            if (expectedHash !== curr.hash) return false;
         }
         return true;
     }

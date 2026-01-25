@@ -4,6 +4,7 @@ import { verifySignature } from './Crypto.js';
 import type { Action } from '../L2/State.js';
 import { Budget } from './Kernel.js';
 import type { Protocol } from '../L4/Protocol.js';
+import { checkInvariants, type InvariantContext } from './Invariants.js';
 
 // --- Guard Pattern ---
 export type GuardResult = { ok: true } | { ok: false; violation: string };
@@ -14,6 +15,15 @@ const OK: GuardResult = { ok: true };
 const FAIL = (msg: string): GuardResult => ({ ok: false, violation: msg });
 
 // --- Concrete Guards ---
+
+// 0. Invariants (Hard Constraints)
+export const InvariantGuard: Guard<InvariantContext> = (ctx) => {
+    const result = checkInvariants(ctx);
+    if (!result.success) {
+        return FAIL(`Invariant Violation: [${result.code}] ${result.message}`);
+    }
+    return OK;
+};
 
 // 1. Identity & Signature (Identity Resolution)
 export const SignatureGuard: Guard<{ intent: Action, manager: IdentityManager }> = ({ intent, manager }) => {

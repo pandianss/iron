@@ -44,6 +44,9 @@ export class AuditLog {
             ...(metadata ? { metadata } : {})
         };
 
+        // IV.1 Immutability Law
+        Object.freeze(evidence);
+
         this.chain.push(evidence);
         return evidence;
     }
@@ -76,7 +79,24 @@ export class AuditLog {
     public verifyIntegrity(): boolean { return this.verifyChain(); }
 
     private calculateHash(prevHash: string, action: Action, status: string, timestamp: number, reason?: string, metadata?: any): string {
-        const data = prevHash + JSON.stringify(action) + status + timestamp + (reason || '') + JSON.stringify(metadata || {});
-        return hash(data);
+        // Canonical Evidence Tuple (Phase 4 Strictness)
+        // [PreviousHash, ActionID, Status, Timestamp, ReasonHash, MetadataHash]
+        const reasonHash = reason ? hash(reason) : hash('');
+        const metaHash = metadata ? hash(JSON.stringify(metadata)) : hash('{}');
+
+        const canonical: [string, string, string, number, string, string] = [
+            prevHash,
+            action.actionId,
+            status,
+            timestamp,
+            reasonHash,
+            metaHash
+        ];
+
+        return hash(JSON.stringify(canonical));
+    }
+
+    public getTip(): Evidence | null {
+        return this.chain.length > 0 ? this.chain[this.chain.length - 1] : null;
     }
 }
