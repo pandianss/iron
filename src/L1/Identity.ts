@@ -184,4 +184,14 @@ export class AuthorityEngine {
             return true;
         });
     }
+    /**
+     * Platform Accessor: Returns raw delegations for visualization/audit.
+     */
+    public getDelegations(filter?: { grantee?: EntityID, granter?: EntityID }): Delegation[] {
+        if (!filter) return [...this.delegations];
+        return this.delegations.filter(d =>
+            (!filter.grantee || d.grantee === filter.grantee) &&
+            (!filter.granter || d.granter === filter.granter)
+        );
+    }
 }

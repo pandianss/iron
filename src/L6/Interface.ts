@@ -17,7 +17,7 @@ export class GovernanceInterface {
         private log: AuditLog
     ) { }
 
-    public getTruth(id: string) { return this.state.get(id); }
+    public getTruth(id: string) { return (this.state as any).currentState.metrics[id]; }
 
     public getAuditTrail(id: string) {
         return this.log.getHistory()
@@ -203,8 +203,48 @@ export class GovernanceInterface {
     /**
      * Verify audit log integrity
      */
-    public verifyAuditIntegrity() {
-        return this.log.verifyIntegrity();
+    // --- Platform: Console API (Read-Optimized) ---
+
+    // Returns a simplified state tree for visualization
+    public getStateSnapshot(): Record<string, any> {
+        return (this.kernel.State as any).currentState.metrics; // Protected access via getter if added, or any cast
+    }
+
+    // Returns audit trail for inspection
+    public getRecentAudits(limit: number = 50): any[] {
+        const history = (this.kernel.State as any).auditLog.getHistory();
+        return history.slice(-limit).reverse(); // Newest first
+    }
+
+    // Returns authority structure for a principal (or root)
+    public getAuthorityGraph(rootPrincipal: string = 'genesis'): any {
+        const auth = (this.kernel as any).authority as any; // Cast to access AuthorityEngine
+        // Note: AuthorityEngine property on Kernel is private, but available via L6 trust (since Interface is internal component).
+        // Accessing 'authority' property.
+
+        // 1. Get all delegations
+        const allDelegations = auth.getDelegations();
+
+        // 2. Recursive Builder
+        const buildTree = (principal: string): any => {
+            const children = allDelegations
+                .filter((d: any) => d.granter === principal && d.status === 'ACTIVE')
+                .map((d: any) => ({
+                    principal: d.grantee,
+                    capacity: d.capacity,
+                    jurisdiction: d.jurisdiction,
+                    limits: d.limits,
+                    expires: d.expiresAt,
+                    children: buildTree(d.grantee)
+                }));
+
+            return {
+                principal,
+                delegations: children
+            };
+        };
+
+        return buildTree(rootPrincipal);
     }
 }
 

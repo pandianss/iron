@@ -254,4 +254,7 @@ export class StateModel {
         }
         return true;
     }
+    public get(metricId: string): any {
+        return this.currentState.metrics[metricId]?.value;
+    }
 }

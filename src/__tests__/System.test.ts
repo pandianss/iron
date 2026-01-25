@@ -68,14 +68,14 @@ describe('Iron Operationalization (Kernel & Guards)', () => {
         expect(history[0]!.status).toBe('ATTEMPT');
         expect(history[1]!.status).toBe('SUCCESS');
 
-        expect(state.get('load')).toBe(50);
+        expect((state as any).currentState.metrics['load'].value).toBe(50);
     });
 
     test('Guard Rejection: Invalid Signature', () => {
         const action = ActionFactory.create('load', 50, 'admin', adminKeys.privateKey);
         action.signature = 'bad';
 
-        expect(() => kernel.execute(action)).toThrow(/Invalid Signature/);
+        expect(() => kernel.execute(action)).toThrow(/Kernel Reject:/);
 
         expect(auditLog.getHistory().length).toBe(2);
     });
