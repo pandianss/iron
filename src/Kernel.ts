@@ -44,7 +44,7 @@ export class GovernanceKernel {
     constructor(
         private identity: IdentityManager,
         private authority: AuthorityEngine,
-        private state: StateModel,
+        public state: StateModel,
         private protocols: ProtocolEngine,
         private audit: AuditLog,
         private registry: MetricRegistry
@@ -53,6 +53,10 @@ export class GovernanceKernel {
     }
 
     public get Lifecycle() { return this.lifecycle; }
+
+    public getStateSnapshotChain() {
+        return this.state.getSnapshotChain();
+    }
 
     /**
      * II.2 State Transition Law (Charter Principle)
