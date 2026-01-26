@@ -130,3 +130,13 @@
 - [x] **Interface (L6)**
     - [x] `IronTeamInterface.ts` (Grant & Sync)
     - [x] Verification: `System.test.ts` (Hierarchy & Heartbeat)
+
+## Stratum VIII: Iron Performance (Verifiable MIS)
+- [x] **Constitution**
+    - [x] `IRON_PERFORMANCE_CONSTITUTION.md` (Insight Engine)
+- [x] **Protocols (L4)**
+    - [x] `KPIAggregation` (Roll-up)
+    - [x] `DriftDetection` (Variance)
+- [x] **Interface (L6)**
+    - [x] `IronPerformanceInterface.ts` (Scorecard & Console)
+    - [x] Verification: `System.test.ts` (Aggregation & Drift)

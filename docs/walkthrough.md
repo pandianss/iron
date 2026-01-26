@@ -81,5 +81,11 @@ The system now includes the **Cryptographic Coordination Engine**:
 - **Interface**: L6 API for `issueRoleCard` and `syncTeam`.
 - **Authority Map**: Live cryptographic visualization of the organizational hierarchy based on L1 Delegations.
 
+## Extension: Stratum VIII (Iron Performance)
+The system now includes the **Verifiable Insight Engine**:
+- **Protocols**: `KPIAggregation` (Metric Roll-up) and `DriftDetection` (Variance Monitoring).
+- **Interface**: L6 API for `getScorecard` (Personal) and `getConsole` (Institutional).
+- **MIS**: Hierarchical alignment of truth – individual discipline feeds team velocity.
+
 ## Conclusion
 The system adheres to the "Iron." specification, "Minimum Cryptographic & Security Specification", and formally verified safety properties.
