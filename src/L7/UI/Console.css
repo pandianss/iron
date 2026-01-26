@@ -1,0 +1,149 @@
+:root {
+    --bg-deep: #0f172a;
+    --bg-glass: rgba(30, 41, 59, 0.7);
+    --accent-cyan: #22d3ee;
+    --accent-blue: #3b82f6;
+    --accent-crimson: #ef4444;
+    --text-primary: #f1f5f9;
+    --text-muted: #94a3b8;
+    --border-glass: rgba(255, 255, 255, 0.1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Inter', system-ui, sans-serif;
+}
+
+body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+}
+
+.canvas {
+    display: flex;
+    height: 100%;
+}
+
+/* --- Sidebar --- */
+.sidebar {
+    width: 280px;
+    background: rgba(15, 23, 42, 0.95);
+    border-right: 1px solid var(--border-glass);
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.brand {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -1px;
+    margin-bottom: 2rem;
+    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.nav-link {
+    padding: 0.75rem 0;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: 0.2s;
+    display: block;
+}
+
+.nav-link:hover,
+.nav-link.active {
+    color: var(--accent-cyan);
+}
+
+/* --- Main Dashboard --- */
+.main {
+    flex: 1;
+    padding: 2rem;
+    overflow-y: auto;
+    background: radial-gradient(circle at top right, #1e1b4b, transparent);
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+}
+
+/* --- Glass Card --- */
+.card {
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-glass);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    transition: 0.3s;
+}
+
+.card:hover {
+    border-color: var(--accent-cyan);
+    transform: translateY(-2px);
+}
+
+.card-title {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+}
+
+.card-value {
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 0.5rem;
+}
+
+.status-nominal {
+    background: #10b981;
+}
+
+.status-alert {
+    background: var(--accent-crimson);
+}
+
+/* --- Simulation View --- */
+.sim-panel {
+    margin-top: 1.5rem;
+    grid-column: span 3;
+    height: 300px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 1rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.sim-grid-lines {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+}

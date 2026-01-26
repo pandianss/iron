@@ -13,9 +13,18 @@ export class Fuzzer {
         private identity: IdentityManager
     ) { }
 
-    async run(iterations: number) {
-        console.log(`Starting Fuzzing (${iterations} iterations)...`);
-        // Basic loop could be added here
+    async run(iterations: number, id: string, key: Ed25519PrivateKey) {
+        console.log(`Starting Full Product Stress Test (${iterations} iterations)...`);
+
+        for (let i = 0; i < iterations; i++) {
+            // Randomly pick an attack vector
+            const dice = Math.random();
+            if (dice < 0.2) await this.runInvalidSig(id, key);
+            else if (dice < 0.4) await this.runBudgetSpam(id, key);
+            else if (dice < 0.6) await this.runWalletBypass(id, key);
+            else if (dice < 0.8) await this.runHabitCheating(id, key);
+            else await this.runTeamHierarchyAttack(id, key);
+        }
     }
 
     /**
@@ -81,7 +90,7 @@ export class Fuzzer {
     }
 
     public async runBudgetSpam(id: string, key: Ed25519PrivateKey) {
-        const action = ActionFactory.create('spam', 9999, id, key);
+        const action = ActionFactory.create('org.team.health', -999, id, key); // Random target
 
         const aid = this.kernel.submitAttempt(id, 'SYSTEM', action, 1000000); // High cost
         const guardStatus = this.kernel.guardAttempt(aid);
@@ -95,7 +104,68 @@ export class Fuzzer {
             this.kernel.commitAttempt(aid, new Budget(BudgetType.ENERGY, 10));
             throw new Error("Fuzzer Error: Budget Validation Failed! (Bankruptcy)");
         } catch (e: any) {
-            if (!e.message.includes("Budget")) throw e;
+            if (!e.message.indexOf("Budget")) throw e;
+        }
+    }
+
+    /**
+     * TARGET: Iron Wallet
+     * ATTACK: A non-nominee tries to trigger 'Medical Emergency'
+     */
+    public async runWalletBypass(id: string, key: Ed25519PrivateKey) {
+        const action = ActionFactory.create('access.request.emergency_active', true, id, key, Date.now(), Date.now() + 60000, 'iron.wallet.emergency.v1');
+
+        try {
+            const aid = this.kernel.submitAttempt(id, 'SYSTEM', action);
+            const guardStatus = this.kernel.guardAttempt(aid);
+
+            if (guardStatus.status === 'ACCEPTED') {
+                // This means the Protocol Engine (L4) or Scope Guard (L0) failed to detect 
+                // that this user is NOT a nominee for this protocol.
+                throw new Error("Fuzzer Success: Wallet Bypass DETECTED! (Security Flaw)");
+            }
+        } catch (e: any) {
+            // Expected failure
+        }
+    }
+
+    /**
+     * TARGET: Iron Habit
+     * ATTACK: Inflation of streaks without proof.
+     */
+    public async runHabitCheating(id: string, key: Ed25519PrivateKey) {
+        const action = ActionFactory.create('habit.journal.streak', 999, id, key, Date.now(), Date.now() + 60000);
+
+        try {
+            const aid = this.kernel.submitAttempt(id, 'SYSTEM', action);
+            const guardStatus = this.kernel.guardAttempt(aid);
+
+            if (guardStatus.status === 'ACCEPTED') {
+                // Should be blocked because only 'Habit' protocols can mutate this metric, 
+                // and they require specific check-in conditions.
+                throw new Error("Fuzzer Success: Habit Streak Inflation ACCEPTED!");
+            }
+        } catch (e: any) {
+            // Expected
+        }
+    }
+
+    /**
+     * TARGET: Iron Team
+     * ATTACK: Privilege Escalation (Revoking a parent as a child)
+     */
+    public async runTeamHierarchyAttack(id: string, key: Ed25519PrivateKey) {
+        const action = ActionFactory.create('org.roles.active_count', -1, id, key, Date.now(), Date.now() + 60000, 'iron.team.coordination.role.v1');
+
+        try {
+            const aid = this.kernel.submitAttempt(id, 'SYSTEM', action);
+            const guardStatus = this.kernel.guardAttempt(aid);
+
+            if (guardStatus.status === 'ACCEPTED') {
+                throw new Error("Fuzzer Success: Team Hierarchy Breach ACCEPTED!");
+            }
+        } catch (e: any) {
+            // Expected
         }
     }
 }

@@ -1,5 +1,10 @@
 import { GovernanceInterface, ActionBuilder } from '../L6/Interface.js';
-import type { Ed25519PrivateKey, KeyPair } from '../L0/Crypto.js';
+import type { KeyPair } from '../L0/Crypto.js';
+import { IronWalletInterface } from '../Solutions/IronWallet/Interface.js';
+import { IronHabitInterface } from '../Solutions/IronHabit/Interface.js';
+import { IronTeamInterface } from '../Solutions/IronTeam/Interface.js';
+import { IronPerformanceInterface } from '../Solutions/IronPerformance/Interface.js';
+import { IronIntelligenceInterface } from '../Solutions/IronIntelligence/Interface.js';
 
 export interface UserSession {
     userId: string;
@@ -10,6 +15,13 @@ export interface UserSession {
 export interface AppDashboard {
     userId: string;
     metrics: Record<string, any>;
+    solutions: {
+        wallet: any;
+        habit: any;
+        team: any;
+        performance: any;
+        intelligence: any;
+    };
     history: {
         action: string;
         timestamp: string;
@@ -21,7 +33,12 @@ export class SovereignApp {
     private session: UserSession | null = null;
 
     constructor(
-        private gateway: GovernanceInterface
+        private gateway: GovernanceInterface,
+        public wallet: IronWalletInterface,
+        public habit: IronHabitInterface,
+        public team: IronTeamInterface,
+        public performance: IronPerformanceInterface,
+        public intelligence: IronIntelligenceInterface
     ) { }
 
     public login(userId: string, keyPair: KeyPair) {
@@ -61,23 +78,48 @@ export class SovereignApp {
     public getDashboard(): AppDashboard {
         if (!this.session) throw new Error("App Error: User unauthenticated");
 
-        const metrics = ['reputation', 'standing', 'commitment'];
         const dashboard: AppDashboard = {
             userId: this.session.userId,
             metrics: {},
+            solutions: {
+                wallet: this.performance.getScorecard(this.session.userId).authority,
+                habit: this.performance.getScorecard(this.session.userId).discipline,
+                team: this.performance.getConsole().orgHealth,
+                performance: this.performance.getConsole().overallVelocity,
+                intelligence: this.performance.getConsole().driftAlert
+            },
             history: []
         };
 
-        for (const m of metrics) {
+        // Hydrate Metrics
+        const vitalMetrics = ['reputation', 'standing', 'user.gamification.xp', 'habit.journal.streak'];
+        for (const m of vitalMetrics) {
             dashboard.metrics[m] = this.gateway.getTruth(m);
-            const trail = this.gateway.getAuditTrail(m);
-            dashboard.history.push(...trail.map(t => ({
-                action: `UPDATE:${m}`,
-                timestamp: t.timestamp,
-                proof: t.proof
-            })));
         }
 
         return dashboard;
+    }
+
+    /**
+     * Strategic Action: Daily Check-In (Iron Habit)
+     */
+    public async dailyCheckIn(proof: string) {
+        if (!this.session) throw new Error("Unauthenticated");
+        return this.habit.checkIn(this.session.userId, proof);
+    }
+
+    /**
+     * Institutional Action: Sync Team (Iron Team)
+     */
+    public async teamSync(roleId: string) {
+        if (!this.session) throw new Error("Unauthenticated");
+        return this.team.syncTeam(roleId, this.session.userId, 'GOVERNANCE_SIGNATURE');
+    }
+
+    /**
+     * Strategic Intelligence: Run Scenario (Iron Intelligence)
+     */
+    public async simulateShift(action: any) {
+        return this.intelligence.runWhatIf(action, 86400 * 7); // Project 1 week
     }
 }
