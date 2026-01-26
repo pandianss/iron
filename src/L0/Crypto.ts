@@ -92,6 +92,23 @@ export class CryptoEngine {
     static nonce(bytes = 32): string {
         return randomBytes(bytes).toString('hex');
     }
+
+    /**
+     * Deterministic JSON serialization (RFC 8785 compliant-ish).
+     * Sorts object keys recursively to ensure Hash(A) === Hash(B) if A == B semantically.
+     */
+    static canonicalize(data: any): string {
+        if (data === undefined) return '';
+        if (data === null) return 'null';
+        if (typeof data !== 'object') return JSON.stringify(data);
+        if (Array.isArray(data)) {
+            return '[' + data.map(i => CryptoEngine.canonicalize(i)).join(',') + ']';
+        }
+        const keys = Object.keys(data).sort();
+        return '{' + keys.map(k =>
+            JSON.stringify(k) + ':' + CryptoEngine.canonicalize(data[k])
+        ).join(',') + '}';
+    }
 }
 
 // --- Legacy Exports (for backward compatibility during migration) ---
@@ -101,3 +118,4 @@ export const verifySignature = CryptoEngine.verify;
 export const hash = CryptoEngine.hash;
 export const hashState = (d: Uint8Array) => CryptoEngine.hashState(d);
 export const randomNonce = CryptoEngine.nonce;
+export const canonicalize = CryptoEngine.canonicalize;

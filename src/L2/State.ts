@@ -2,7 +2,7 @@
 import { produce } from 'immer';
 import type { EntityID } from '../L0/Ontology.js';
 import { IdentityManager } from '../L1/Identity.js';
-import { verifySignature, hash, hashState } from '../L0/Crypto.js';
+import { verifySignature, hash, hashState, canonicalize } from '../L0/Crypto.js';
 import { AuditLog } from '../L5/Audit.js';
 import { LogicalTimestamp } from '../L0/Kernel.js';
 
@@ -80,6 +80,8 @@ export class StateModel {
     // Legacy history view (derived)
     private historyCache: Map<string, StateValue[]> = new Map();
 
+    public getSnapshotChain(): StateSnapshot[] { return this.snapshots; }
+
     constructor(
         private auditLog: AuditLog,
         private registry: MetricRegistry,
@@ -103,7 +105,7 @@ export class StateModel {
             if (!entity) throw new Error("Unknown Entity");
             if (entity.status === 'REVOKED') throw new Error("Entity Revoked");
 
-            const data = `${action.actionId}:${action.initiator}:${JSON.stringify(action.payload)}:${action.timestamp}:${action.expiresAt}`;
+            const data = `${action.actionId}:${action.initiator}:${canonicalize(action.payload)}:${action.timestamp}:${action.expiresAt}`;
 
             if (action.signature !== 'GOVERNANCE_SIGNATURE') {
                 if (!verifySignature(data, action.signature, entity.publicKey)) {
@@ -146,9 +148,15 @@ export class StateModel {
         this.validateMutation(payload);
 
         // 2. Monotonic Time Check
+        const current = LogicalTimestamp.fromString(timestamp);
+        const globalLast = LogicalTimestamp.fromString(this.currentState.lastUpdate);
+
+        if (current.time < globalLast.time || (current.time === globalLast.time && current.logical < globalLast.logical)) {
+            throw new Error("Time Violation: Global Monotonicity Breach (Time moved backwards)");
+        }
+
         const lastState = this.currentState.metrics[payload.metricId];
         if (lastState) {
-            const current = LogicalTimestamp.fromString(timestamp);
             const last = LogicalTimestamp.fromString(lastState.updatedAt);
 
             if (current.time < last.time || (current.time === last.time && current.logical < last.logical)) {
@@ -196,8 +204,6 @@ export class StateModel {
         const globalStateParams = allMetrics.map(([k, v]) => `${k}:${v.stateHash}`).join('|');
         const globalRoot = hashState(Buffer.from(globalStateParams + finalState.version));
 
-        // 5b. Canonicalization (Phase 3 Strictness)
-        // [Version, ActionID, Timestamp, RootHash, PreviousHash]
         const canonical: [number, string, string, string, string] = [
             finalState.version,
             validActionId,
@@ -206,7 +212,7 @@ export class StateModel {
             previousSnapshot.hash
         ];
         // The Snapshot Hash is now the hash of this Tuple, enforcing strict structure
-        const snapshotHash = hash(JSON.stringify(canonical));
+        const snapshotHash = hash(canonicalize(canonical));
 
         // 6. Create Snapshot
         const snapshot: StateSnapshot = {

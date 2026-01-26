@@ -1,6 +1,6 @@
 // src/L0/Guards.ts
 import { IdentityManager, AuthorityEngine } from '../L1/Identity.js';
-import { verifySignature } from './Crypto.js';
+import { verifySignature, canonicalize } from './Crypto.js';
 import type { Action } from '../L2/State.js';
 import { Budget } from './Kernel.js';
 import type { Protocol } from '../L4/Protocol.js';
@@ -19,8 +19,8 @@ const FAIL = (msg: string): GuardResult => ({ ok: false, violation: msg });
 // 0. Invariants (Hard Constraints)
 export const InvariantGuard: Guard<InvariantContext> = (ctx) => {
     const result = checkInvariants(ctx);
-    if (!result.success) {
-        return FAIL(`Invariant Violation: [${result.code}] ${result.message}`);
+    if (!result.ok && result.rejection) {
+        return FAIL(`Invariant Violation: [${result.rejection.code}] ${result.rejection.message}`);
     }
     return OK;
 };
@@ -31,7 +31,7 @@ export const SignatureGuard: Guard<{ intent: Action, manager: IdentityManager }>
     if (!e) return FAIL("Entity not found");
     if (e.status === 'REVOKED') return FAIL("Entity revoked");
 
-    const data = `${intent.actionId}:${intent.initiator}:${JSON.stringify(intent.payload)}:${intent.timestamp}:${intent.expiresAt}`;
+    const data = `${intent.actionId}:${intent.initiator}:${canonicalize(intent.payload)}:${intent.timestamp}:${intent.expiresAt}`;
 
     console.log(`[SignatureGuard] Data: ${data}`);
     console.log(`[SignatureGuard] Sig: ${intent.signature}`);
@@ -72,6 +72,12 @@ export const ConflictGuard: Guard<{ protocols: Protocol[] }> = ({ protocols }) =
     if (protocols.length > 1) {
         return FAIL("Protocol Conflict: Multiple protocols triggered");
     }
+    return OK;
+};
+
+// 6. Replay Guard (The Bureaucratic Memory)
+export const ReplayGuard: Guard<{ actionId: string, seen: Set<string> }> = ({ actionId, seen }) => {
+    if (seen.has(actionId)) return FAIL(`Replay Violation: Action ${actionId} already processed`);
     return OK;
 };
 

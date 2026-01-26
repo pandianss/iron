@@ -70,11 +70,15 @@ export interface GovernedState {
     derivationHistory: string; // EvidenceID link
 }
 
+// --- 7. Canonical State (Formal Invariant) ---
+// The mathematical tuple that defines a unique state in time.
+// Hash(CanonicalTuple) = SnapshotHash
 export type CanonicalTuple = [
-    number, // version
-    string, // lastActionId
-    string, // timestamp
-    string  // stateRootHash
+    number, // version (Monotonic Counter)
+    string, // actionId (Causal Link)
+    string, // timestamp (Logical Time)
+    string, // stateRootHash (Merkle Root of Metrics/Entities/Protocols)
+    string  // previousHash (Chain Link)
 ];
 
 // --- 7. Protocol ---

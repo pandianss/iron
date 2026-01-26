@@ -4,7 +4,7 @@ import { IdentityManager, AuthorityEngine } from './L1/Identity.js';
 import { ProtocolEngine } from './L4/Protocol.js';
 import type { Mutation } from './L4/Protocol.js';
 import { AuditLog } from './L5/Audit.js';
-import { SignatureGuard, ScopeGuard, TimeGuard, BudgetGuard, InvariantGuard } from './L0/Guards.js';
+import { SignatureGuard, ScopeGuard, TimeGuard, BudgetGuard, InvariantGuard, ReplayGuard } from './L0/Guards.js';
 import { checkInvariants } from './L0/Invariants.js';
 import type { Rejection, IllegalState } from './L0/Invariants.js';
 import { Budget, LogicalTimestamp } from './L0/Kernel.js';
@@ -38,6 +38,7 @@ export interface Commit {
 
 export class GovernanceKernel {
     private attempts: Map<AttemptID, Attempt> = new Map();
+    private seenActions: Set<ActionID> = new Set(); // Replay Protection
     private lifecycle: KernelState = 'UNINITIALIZED';
 
     constructor(
@@ -144,6 +145,18 @@ export class GovernanceKernel {
             };
             this.reject(attempt, rejection);
             return { status: 'REJECTED', reason: rejection.message };
+        }
+
+        // 1.5 Replay Guard (The Bureaucrat)
+        const replay = ReplayGuard({ actionId: attempt.action.actionId, seen: this.seenActions });
+        if (!replay.ok) {
+            const rejection: Rejection = {
+                code: 'REPLAY_DETECTED' as any, // Need to add to type or cast
+                invariantId: 'REP-GUARD-01',
+                message: replay.violation
+            };
+            this.reject(attempt, rejection);
+            return { status: 'REJECTED', reason: replay.violation };
         }
 
         // 2. Authority Guard (Jurisdiction/Capacity check)
@@ -254,6 +267,9 @@ export class GovernanceKernel {
 
             // Article III.6 Institutional Ledger & Evidence
             const evidence = this.audit.append(attempt.action, 'SUCCESS');
+
+            this.attempts.delete(attemptId);
+            this.seenActions.add(attempt.action.actionId);
 
             return {
                 attemptId: attempt.id,

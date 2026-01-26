@@ -1,5 +1,5 @@
 // src/L5/Audit.ts
-import { hash } from '../L0/Crypto.js';
+import { hash, canonicalize } from '../L0/Crypto.js';
 import type { Action } from '../L2/State.js';
 
 // --- 12. Evidence (The institutional truth substrate) ---
@@ -82,7 +82,8 @@ export class AuditLog {
         // Canonical Evidence Tuple (Phase 4 Strictness)
         // [PreviousHash, ActionID, Status, Timestamp, ReasonHash, MetadataHash]
         const reasonHash = reason ? hash(reason) : hash('');
-        const metaHash = metadata ? hash(JSON.stringify(metadata)) : hash('{}');
+        // Metadata must be canonicalized before hashing
+        const metaHash = metadata ? hash(canonicalize(metadata)) : hash('{}');
 
         const canonical: [string, string, string, number, string, string] = [
             prevHash,
@@ -93,10 +94,11 @@ export class AuditLog {
             metaHash
         ];
 
-        return hash(JSON.stringify(canonical));
+        // Use canonicalize for the final tuple too (safe practice)
+        return hash(canonicalize(canonical));
     }
 
     public getTip(): Evidence | null {
-        return this.chain.length > 0 ? this.chain[this.chain.length - 1] : null;
+        return this.chain.length > 0 ? (this.chain[this.chain.length - 1] || null) : null;
     }
 }

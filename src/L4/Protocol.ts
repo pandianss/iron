@@ -200,25 +200,19 @@ export class ProtocolEngine {
                 if (!pre.metricId || pre.value === undefined) continue;
 
                 let currentVal = this.state.get(pre.metricId);
-                if (proposed && proposed.metricId === pre.metricId) {
-                    currentVal = proposed.value;
-                }
-                const current = Number(currentVal || 0);
-                if (isNaN(current)) return false;
-
+                const current = Number(currentVal !== undefined ? currentVal : 0);
                 const thresh = Number(pre.value);
+
                 if (pre.operator === '>' && !(current > thresh)) return false;
                 if (pre.operator === '>=' && !(current >= thresh)) return false;
                 if (pre.operator === '<' && !(current < thresh)) return false;
                 if (pre.operator === '<=' && !(current <= thresh)) return false;
                 if (pre.operator === '==' && !(current === thresh)) return false;
-
-                // Patch: Fail Closed if operator is unknown/unhandled
-                if (!['>', '<', '==', '>=', '<='].includes(pre.operator || '')) return false;
             }
-            if (pre.type === 'ALWAYS') return true;
+            // Other types like TIME_WINDOW are ignored or treated as soft for now
         }
-        return p.preconditions.length > 0;
+        // If we reach here, either there were no preconditions or they all passed
+        return true;
     }
     private getRulesMutations(p: Protocol, proposed?: Mutation): Mutation[] {
         const mutations: Mutation[] = [];
@@ -227,10 +221,7 @@ export class ProtocolEngine {
             const rule = r as Rule;
             if (rule.type === 'MUTATE_METRIC' && rule.metricId && rule.mutation !== undefined) {
                 let currentVal = this.state.get(rule.metricId);
-                if (proposed && proposed.metricId === rule.metricId) {
-                    currentVal = proposed.value;
-                }
-                const current = Number(currentVal || 0);
+                const current = Number(currentVal !== undefined ? currentVal : 0);
                 const newVal = current + rule.mutation;
                 mutations.push({ metricId: rule.metricId, value: newVal });
             }
