@@ -18,6 +18,7 @@ The system is composed of seven irreducible primitives.
 5.  **Protocol**: A ratifiable, versioned logic module defining state transition rules.
 6.  **Guard**: A pure function that accepts or rejects Intents based on invariants.
 7.  **Capability**: A distinct unit of authority granted to an Identity.
+8.  **Plugin**: A signed, restricted extension module providing Guards, Protocols, or Projections.
 
 ---
 
@@ -34,6 +35,7 @@ The system is stratified into **Law-Bound Layers** (mechanisms) and **Replaceabl
     2.  **Legitimacy**: No state transition occurs outside the `Attempt -> Guard -> Commit` cycle.
     3.  **Audit**: No mutation occurs without generating a verifiable evidence trail.
     4.  **Isolation**: The Kernel must be side-effect free; it inputs Intents and outputs State/Audit.
+    5.  **Plugin Context**: Plugins must execute within a restricted `PluginContext`, with NO direct access to Kernel internals.
 
 #### Layer 1: Identity (The Authority Algebra)
 *   **Role**: Definition of "Who".
@@ -64,6 +66,7 @@ The system is stratified into **Law-Bound Layers** (mechanisms) and **Replaceabl
 *   **Laws**:
     1.  **Ratification**: Code does not execute until Ratified by an Authority.
     2.  **Versioned**: All protocols are immutable once active; changes require new versions.
+    3.  **Capability Bound**: Protocols originating from Plugins are strictly limited to the Metric Targets declared in the Plugin Manifest.
 
 #### Layer 5: Audit (The Judiciary)
 *   **Role**: Evidence and Proof.
@@ -110,8 +113,14 @@ The flow of an Action through the system:
 *   **Guard Failure**: If a Guard throws/fails, the system **Must Reject**. Fail-Closed.
 *   **Kernel Panic**: Any inconsistency in State Hashing triggers a `SYSTEM_HALT`.
 *   **Simulation Divergence**: If L3 predicts X and L2 produces Y, the system logs a `PRE_CRIME_ANOMALY` but proceeds with L2 (Reality wins).
+*   **Plugin Revocation**: If a Plugin is `REVOKED` or `DEPRECATED`, its associated Guards and Protocols are immediately bypassed or disabled.
 
-### 2. Upgrade Law
+### 2. Plugin Enforcement Law
+*   **Static Enforcement**: Plugins cannot be registered if they request overlapping Protocol targets or invalid Guard phases.
+*   **Runtime Enforcement**: Every plugin call is wrapped in a `PluginContext` that enforces read-only access to state and append-only access to audit.
+*   **Capability Check**: The Kernel MUST verify that a plugin still possesses the required capability *at the moment of execution*.
+
+### 3. Upgrade Law
 *   **Kernel Evolution**: The Kernel code itself is immutable at runtime. Upgrades require a `MIGRATION` event (transfer of State Root to new Kernel instance).
 *   **Protocol Evolution**: Handled via L4 `deprecate` / `activate` lifecycle.
 
@@ -119,3 +128,4 @@ The flow of an Action through the system:
 *   **Never**: Allow UI (L7) to write directly to Database (L2) bypassing Kernel (L0).
 *   **Never**: Allow Simulation (L3) to "auto-correct" Reality (L2).
 *   **Never**: Hardcode specific Identities (e.g., "The CEO") into Kernel Logic (L0). Always use Roles/Capabilities.
+*   **Never**: Allow a Plugin to access another Plugin's private state or memory.

@@ -1,16 +1,16 @@
 
 import { describe, it, expect } from '@jest/globals';
-import { GovernanceKernel } from '../../../Kernel.js';
-import { IdentityManager, AuthorityEngine } from '../../../L1/Identity.js';
-import { StateModel, MetricRegistry } from '../../../L2/State.js';
-import { ProtocolEngine } from '../../../L4/Protocol.js';
-import { AuditLog } from '../../../L5/Audit.js';
+import { GovernanceKernel } from '../../../kernel-core/Kernel.js';
+import { IdentityManager, AuthorityEngine } from '../../../kernel-core/L1/Identity.js';
+import { StateModel, MetricRegistry } from '../../../kernel-core/L2/State.js';
+import { ProtocolEngine } from '../../../kernel-core/L4/Protocol.js';
+import { AuditLog } from '../../../kernel-core/L5/Audit.js';
 import { KernelPlatform } from '../../../Platform/KernelPlatform.js';
 import type { Command } from '../../../Platform/KernelPlatform.js';
 import { WalletService } from '../WalletService.js';
 import type { IStateRepository, IPrincipalRegistry } from '../../../Platform/Ports.js';
 import { BudgetProtocol } from '../../../Reference/IronCorp/Protocols/Budget.js';
-import { generateKeyPair, signData, canonicalize } from '../../../L0/Crypto.js';
+import { generateKeyPair, signData, canonicalize } from '../../../kernel-core/L0/Crypto.js';
 
 describe('Stratum II: Platform & Product Integration', () => {
 

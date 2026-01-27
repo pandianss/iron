@@ -1,6 +1,17 @@
 
-import type { Action, StateSnapshot } from '../L2/State.js';
-import type { EntityID } from '../L0/Ontology.js';
+import type { Action, StateSnapshot } from '../kernel-core/L2/State.js';
+import type { EntityID } from '../kernel-core/L0/Ontology.js';
+import type { Evidence } from '../kernel-core/L5/Audit.js';
+
+/**
+ * Persistence Port: Event Store
+ * Handles the append-only log of institutional truth.
+ */
+export interface IEventStore {
+    append(evidence: Evidence): Promise<void>;
+    getHistory(): Promise<Evidence[]>;
+    getLatest(): Promise<Evidence | null>;
+}
 
 /**
  * Persistence Port: State Repository

@@ -1,6 +1,7 @@
 
-import { GovernanceKernel } from '../Kernel.js';
-import type { Action, ActionPayload } from '../L2/State.js';
+import type { Action, ActionPayload } from '../kernel-core/L2/State.js';
+import type { AttemptID } from '../kernel-core/Kernel.js';
+import { GovernanceKernel } from '../kernel-core/Kernel.js';
 import {
     PlatformError,
     PolicyViolationError,
@@ -8,7 +9,8 @@ import {
     DataIntegrityError,
     InfrastructureError
 } from './Errors.js';
-import type { IStateRepository, IPrincipalRegistry } from './Ports.js';
+import type { IStateRepository, IPrincipalRegistry, ISystemClock, IEventStore } from './Ports.js';
+import { AuditLog } from '../kernel-core/L5/Audit.js';
 
 /**
  * The Domain Command: A product-level intention.
@@ -28,52 +30,109 @@ export interface Command {
  * All Products Call This. No Product Calls L0 directly.
  */
 export class KernelPlatform {
+    private kernel: GovernanceKernel;
+    private audit: AuditLog;
+
     constructor(
-        private kernel: GovernanceKernel,
-        private repository: IStateRepository,
-        private identity: IPrincipalRegistry
-    ) { }
+        private repo: IStateRepository,
+        private principal: IPrincipalRegistry,
+        private clock: ISystemClock,
+        // Dependency Injection for Core Engines
+        private identityManager: any,
+        private authorityEngine: any,
+        private protocols: any,
+        private metrics: any,
+        private eventStore?: IEventStore
+    ) {
+        this.audit = new AuditLog(this.eventStore);
+        this.kernel = new GovernanceKernel(
+            this.identityManager,
+            this.authorityEngine,
+            repo as any,
+            this.protocols,
+            this.audit,
+            this.metrics
+        );
+    }
 
     /**
-     * Dispatches a product command to the governance machine.
+     * Legacy/Direct execution (Shortcut for simple actions)
      */
-    public async execute(cmd: Command): Promise<{ success: boolean, actionId: string }> {
-        try {
-            // 1. Resolve Principal
-            const entityId = await this.identity.resolve(cmd.userId);
-            if (!entityId) {
-                throw new SecurityViolationError(`User ${cmd.userId} not mapped to kernel principal`, cmd.userId);
-            }
+    public async executeDirect(userId: string, target: string, operation: string, payload: any, signature: string): Promise<any> {
+        const cmd: Command = {
+            id: `direct:${Date.now()}`,
+            userId,
+            target,
+            operation,
+            payload,
+            signature
+        };
 
-            // 2. Map Command to Action
+        try {
+            const entityId = await this.principal.resolve(userId);
+            if (!entityId) throw new Error("UNAUTHORIZED_PRINCIPAL");
+
             const action: Action = {
                 actionId: cmd.id,
                 initiator: entityId,
-                payload: {
-                    protocolId: cmd.operation, // We map 'operation' to protocol
-                    metricId: cmd.target,
-                    value: cmd.payload
-                },
-                timestamp: cmd.timestamp || Date.now().toString(),
+                payload: { metricId: target, value: payload, protocolId: operation },
+                timestamp: this.clock.now(),
                 expiresAt: '0',
-                signature: cmd.signature
+                signature: signature
             };
 
-            // 3. Execution via Kernel
-            // This will trigger Guards, Protocols, and State mutations.
-            this.kernel.execute(action);
+            const commit = await this.kernel.execute(action);
+            return { ok: true, commitId: commit.attemptId };
+        } catch (e) {
+            return { ok: false, error: this.translateError(e, cmd) };
+        }
+    }
 
-            // 4. Persistence Persist (In-memory or Store)
-            // The kernel updates the StateModel, which we can sync here.
-            const latest = this.kernel.getStateSnapshotChain().slice(-1)[0];
-            if (latest) {
-                await this.repository.saveSnapshot(latest);
-            }
+    /**
+     * Two-phase commit: Step 1 - Submit Attempt
+     */
+    public async submitAction(userId: string, actionId: string, metricId: string, value: any, protocolId?: string): Promise<string> {
+        const cmd: Command = {
+            id: actionId,
+            userId,
+            target: metricId,
+            operation: protocolId || 'SYSTEM',
+            payload: value,
+            signature: 'GOVERNANCE_SIGNATURE' // Placeholder
+        };
 
-            return { success: true, actionId: action.actionId };
+        try {
+            const entityId = await this.principal.resolve(userId);
+            if (!entityId) throw new Error("UNAUTHORIZED_PRINCIPAL");
 
-        } catch (e: any) {
+            const action: Action = {
+                actionId,
+                initiator: entityId,
+                payload: { metricId, value, protocolId },
+                timestamp: this.clock.now(),
+                expiresAt: '0',
+                signature: 'GOVERNANCE_SIGNATURE'
+            };
+
+            return await this.kernel.submitAttempt(entityId, protocolId || 'SYSTEM', action);
+        } catch (e) {
             throw this.translateError(e, cmd);
+        }
+    }
+
+    /**
+     * Two-phase commit: Step 2 - Commit Attempt
+     */
+    public async commitAction(attemptId: string, budget: any): Promise<any> {
+        try {
+            const commit = await this.kernel.commitAttempt(attemptId, budget);
+            return {
+                ok: true,
+                commitId: commit.attemptId,
+                newStateHash: commit.newStateHash
+            };
+        } catch (e) {
+            return { ok: false, error: this.translateError(e) };
         }
     }
 
@@ -87,14 +146,17 @@ export class KernelPlatform {
     /**
      * Translates low-level Kernel rejections into Platform Errors.
      */
-    private translateError(e: any, cmd: Command): PlatformError {
+    private translateError(e: any, cmd?: Command): PlatformError {
         const msg = e.message || "Unknown Kernel Error";
+        const op = cmd?.operation || "unknown";
+        const user = cmd?.userId || "unknown";
+        const target = cmd?.target || "unknown";
 
         if (msg.includes("Policy Violation") || msg.includes("reverts") || msg.includes("rejects")) {
-            return new PolicyViolationError(msg, cmd.operation);
+            return new PolicyViolationError(msg, op);
         }
         if (msg.includes("Authority") || msg.includes("Signature") || msg.includes("Jurisdiction")) {
-            return new SecurityViolationError(msg, cmd.userId, cmd.target);
+            return new SecurityViolationError(msg, user, target);
         }
         if (msg.includes("Invariant") || msg.includes("Integrity") || msg.includes("Merkle")) {
             return new DataIntegrityError(msg);

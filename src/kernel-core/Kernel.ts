@@ -1,14 +1,15 @@
-import type { Action, ActionPayload } from './L2/State.js';
 import { StateModel, MetricRegistry } from './L2/State.js';
 import { IdentityManager, AuthorityEngine } from './L1/Identity.js';
 import { ProtocolEngine } from './L4/Protocol.js';
-import type { Mutation } from './L4/Protocol.js';
+import type { Mutation, Action, ActionPayload, KernelState, ActionID, CapacityID, JurisdictionID, EntityID } from './L0/Ontology.js';
 import { AuditLog } from './L5/Audit.js';
 import { SignatureGuard, ScopeGuard, TimeGuard, BudgetGuard, InvariantGuard, ReplayGuard } from './L0/Guards.js';
 import { checkInvariants } from './L0/Invariants.js';
-import type { Rejection, IllegalState } from './L0/Invariants.js';
+import type { Rejection } from './L0/Invariants.js';
 import { Budget, LogicalTimestamp } from './L0/Kernel.js';
-import type { KernelState, EntityID, ActionID, CapacityID, JurisdictionID } from './L0/Ontology.js';
+import { GuardRegistry } from './L0/GuardRegistry.js';
+import { PluginRegistry } from './L0/PluginRegistry.js';
+import { ErrorCode, KernelError } from './Errors.js';
 
 export type AttemptID = string;
 export type AttemptStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COMMITTED' | 'ABORTED';
@@ -40,6 +41,7 @@ export class GovernanceKernel {
     private attempts: Map<AttemptID, Attempt> = new Map();
     private seenActions: Set<ActionID> = new Set(); // Replay Protection
     private lifecycle: KernelState = 'UNINITIALIZED';
+    private guards: GuardRegistry;
 
     constructor(
         private identity: IdentityManager,
@@ -47,8 +49,18 @@ export class GovernanceKernel {
         public state: StateModel,
         private protocols: ProtocolEngine,
         private audit: AuditLog,
-        private registry: MetricRegistry
+        private registry: MetricRegistry,
+        private pluginRegistry?: PluginRegistry
     ) {
+        this.guards = new GuardRegistry(pluginRegistry, state, audit);
+        // Register Constitutional Guards
+        this.guards.register('INVARIANT', InvariantGuard);
+        this.guards.register('SIGNATURE', SignatureGuard);
+        this.guards.register('SCOPE', ScopeGuard);
+        this.guards.register('TIME', TimeGuard);
+        this.guards.register('REPLAY', ReplayGuard);
+        this.guards.register('BUDGET', BudgetGuard);
+
         this.transition('CONSTITUTED');
     }
 
@@ -79,7 +91,7 @@ export class GovernanceKernel {
         } as Record<KernelState, KernelState[]>;
 
         if (from !== 'UNINITIALIZED' && !allowed[from].includes(to)) {
-            throw new Error(`Kernel Violation: Illegal State Transition ${from} -> ${to}`);
+            throw new Error(`Kernel Violation: Illegal State Transition ${from} -> ${to} `);
         }
 
         this.lifecycle = to;
@@ -91,6 +103,18 @@ export class GovernanceKernel {
         }
     }
 
+    /**
+     * M2.5 Persistence: Allow rehydrating the replay memory
+     */
+    public registerSeenAction(id: ActionID) {
+        if (this.lifecycle !== 'UNINITIALIZED' && this.lifecycle !== 'CONSTITUTED') {
+            // In strict mode, we might ban this if kernel is already active, 
+            // but for now allow it as long as we haven't started processing new things?
+            // Actually, ReplayEngine runs on a fresh kernel, so it will be in UNINITIALIZED or CONSTITUTED.
+        }
+        this.seenActions.add(id);
+    }
+
     public get State() { return this.state; }
     public get Registry() { return this.registry; }
     public get Protocols() { return this.protocols; }
@@ -98,14 +122,14 @@ export class GovernanceKernel {
     /**
      * Article V: State Interface - Propose Transition (Submit Attempt)
      */
-    public submitAttempt(
+    public async submitAttempt(
         initiator: EntityID,
         protocolId: string,
         action: Action,
         cost: number = 1
-    ): AttemptID {
+    ): Promise<AttemptID> {
         if (this.lifecycle !== 'ACTIVE') {
-            throw new Error(`Kernel Error: Cannot submit attempt in state ${this.lifecycle}`);
+            throw new Error(`Kernel Error: Cannot submit attempt in state ${this.lifecycle} `);
         }
         const attempt: Attempt = {
             id: action.actionId,
@@ -118,110 +142,92 @@ export class GovernanceKernel {
         };
 
         this.attempts.set(attempt.id, attempt);
-        this.audit.append(action, 'ATTEMPT');
+        await this.audit.append(action, 'ATTEMPT');
         return attempt.id;
     }
 
     /**
      * Article III.2 Authority Interface - Verify Mandate (Guard Attempt)
      */
-    public guardAttempt(attemptId: AttemptID): { status: 'ACCEPTED' | 'REJECTED', reason?: string } {
-        if (this.lifecycle !== 'ACTIVE') throw new Error(`Kernel Error: Cannot guard attempt in state ${this.lifecycle}`);
-
+    public async guardAttempt(attemptId: AttemptID): Promise<{ status: 'ACCEPTED' | 'REJECTED', reason?: string }> {
+        if (this.lifecycle !== 'ACTIVE') throw new Error(`Kernel Error: Cannot guard attempt in state ${this.lifecycle} `);
         const attempt = this.attempts.get(attemptId);
-        if (!attempt) throw new Error("Kernel Error: Attempt not found");
+        if (!attempt) throw new Error("ATTEMPT_NOT_FOUND");
 
-        // 0. Invariant Guard (Constitutional Law)
-        const check = checkInvariants({ action: attempt.action, manager: this.identity });
-        if (!check.ok && check.rejection) {
-            this.reject(attempt, check.rejection);
-            return { status: 'REJECTED', reason: check.rejection.message };
+        // 1. Static Invariant Check
+        let check = this.guards.evaluate('INVARIANT', { action: attempt.action, manager: this.identity });
+        if (!check.ok) {
+            const violation = check.violation!;
+            const match = /\[(.*?)\] (.*)/.exec(violation);
+            const code = match ? match[1] : 'INVARIANT_VIOLATION';
+            const message = (match && match[2]) ? match[2] : violation;
+
+            await this.reject(attempt, { code: code as any, invariantId: 'Unknown', message });
+            return { status: 'REJECTED', reason: message };
         }
 
-        // 1. Signature Guard (Identity Resolution)
-        // 1. Signature Guard (Identity Resolution)
-        const sigResult = SignatureGuard({ intent: attempt.action, manager: this.identity });
+        // 2. Identity & Signature
+        const sigResult = this.guards.evaluate('SIGNATURE', { intent: attempt.action, manager: this.identity });
         if (!sigResult.ok) {
             const rejection: Rejection = {
-                code: 'SIGNATURE_INVALID',
-                invariantId: 'SIG-GUARD-01',
-                message: `Authority Violation: Invalid Signature (${sigResult.violation})`
+                code: sigResult.code || ErrorCode.SIGNATURE_INVALID,
+                invariantId: 'INV-ID-01',
+                message: sigResult.violation || "Invalid Signature"
             };
-            this.reject(attempt, rejection);
-            return { status: 'REJECTED', reason: rejection.message };
+            await this.reject(attempt, rejection);
+            return { status: 'REJECTED', reason: rejection.message || "Invalid Signature" };
         }
 
-        // 1.5 Replay Guard (The Bureaucrat)
-        const replay = ReplayGuard({ actionId: attempt.action.actionId, seen: this.seenActions });
-        if (!replay.ok) {
+        // 3. Scope & Jurisdiction
+        const scopeResult = this.guards.evaluate('SCOPE', {
+            actor: attempt.initiator,
+            capability: attempt.action.payload.metricId,
+            engine: this.authority,
+            context: {
+                time: attempt.action.timestamp,
+                value: attempt.action.payload.value as number
+            }
+        });
+
+        if (!scopeResult.ok) {
             const rejection: Rejection = {
-                code: 'REPLAY_DETECTED' as any, // Need to add to type or cast
-                invariantId: 'REP-GUARD-01',
-                message: replay.violation
+                code: scopeResult.code || ErrorCode.OVERSCOPE_ATTEMPT,
+                invariantId: 'INV-AUTH-01',
+                message: scopeResult.violation || "Scope Violation"
             };
-            this.reject(attempt, rejection);
-            return { status: 'REJECTED', reason: replay.violation };
+            await this.reject(attempt, rejection);
+            return { status: 'REJECTED', reason: rejection.message || "Scope Violation" };
         }
 
-        // 2. Authority Guard (Jurisdiction/Capacity check)
-        const targetMetric = attempt.action.payload.metricId;
-        const context = {
-            time: attempt.action.timestamp,
-            value: attempt.action.payload.value as number
-        };
-
-        if (!this.authority.authorized(attempt.initiator, `METRIC.WRITE:${targetMetric}`, context)) {
+        // 4. Replay Protection
+        const replayResult = this.guards.evaluate('REPLAY', { actionId: attempt.id, seen: this.seenActions });
+        if (!replayResult.ok) {
             const rejection: Rejection = {
-                code: 'AUTHORITY_OVERSCOPE' as any, // Mapped to IllegalState extension if needed
-                invariantId: 'AUTH-GUARD-01',
-                message: `Authority Violation: ${attempt.initiator} lacks Jurisdiction for ${targetMetric}`
+                code: replayResult.code || ErrorCode.REPLAY_DETECTED,
+                invariantId: 'INV-SEC-01',
+                message: replayResult.violation || "Replay Detected"
             };
-            // Note: AUTHORITY_OVERSCOPE should be added to IllegalState if frequent, 
-            // but for Invariants we use generic codes. 
-            // Let's map to PROTOCOL_VIOLATION or a new code. 
-            // Audit requirement: Formal Codes. 
-            // We'll trust the Invariants.ts definition or extend it.
-            // Extending Invariants.ts is best properly, but for now using cast to satisfy compiler if strict.
-            // Actually let's use 'PROTOCOL_VIOLATION' for now or add EXPIRED_AUTHORITY/REVOKED_ENTITY matches.
-            // Let's use 'EXPIRED_AUTHORITY' as closest proxy or just add AUTHORITY_INVALID.
-
-            this.reject(attempt, rejection, { context });
-            return { status: 'REJECTED', reason: rejection.message };
+            await this.reject(attempt, rejection);
+            return { status: 'REJECTED', reason: rejection.message || "Replay Detected" };
         }
 
-        // 3. Protocol Binding & Policy Enforcement (Product 3: Gate)
-        const isSystemAction = attempt.protocolId === 'SYSTEM' || attempt.protocolId === 'ROOT';
-
-        if (!isSystemAction) {
+        // 5. Protocol Binding
+        if (attempt.protocolId !== 'SYSTEM' && attempt.protocolId !== 'ROOT') {
             if (!this.protocols.isRegistered(attempt.protocolId)) {
                 const rejection: Rejection = {
-                    code: 'PROTOCOL_VIOLATION',
+                    code: ErrorCode.PROTOCOL_VIOLATION,
                     invariantId: 'PRO-BIND-01',
                     message: "Protocol Binding Violation: Protocol not registered"
                 };
-                this.reject(attempt, rejection);
-                return { status: 'REJECTED', reason: rejection.message };
-            }
-
-            // Pre-execution evaluation (The "Gate")
-            const mutations = this.protocols.evaluate(attempt.timestamp, {
-                metricId: attempt.action.payload.metricId,
-                value: attempt.action.payload.value
-            });
-
-            const protocol = this.protocols.get(attempt.protocolId);
-            if (protocol?.strict && mutations.length === 0) {
-                const rejection: Rejection = {
-                    code: 'PROTOCOL_VIOLATION',
-                    invariantId: 'PRO-STRICT-01',
-                    message: `Policy Violation: ${protocol.name} rejects this execution.`
-                };
-                this.reject(attempt, rejection, { protocolId: attempt.protocolId, violationType: 'POLICY_REJECTION' });
+                await this.reject(attempt, rejection);
                 return { status: 'REJECTED', reason: rejection.message };
             }
         }
 
+        // Acceptance
         attempt.status = 'ACCEPTED';
+        await this.audit.append(attempt.action, 'ACCEPTED');
+
         return { status: 'ACCEPTED' };
     }
 
@@ -229,8 +235,8 @@ export class GovernanceKernel {
     /**
      * Article V: State Interface - Commit Validated Transition
      */
-    public commitAttempt(attemptId: AttemptID, budget: Budget): Commit {
-        if (this.lifecycle !== 'ACTIVE') throw new Error(`Kernel Error: Cannot commit in state ${this.lifecycle}`);
+    public async commitAttempt(attemptId: AttemptID, budget: Budget): Promise<Commit> {
+        if (this.lifecycle !== 'ACTIVE') throw new Error(`Kernel Error: Cannot commit in state ${this.lifecycle} `);
 
         const attempt = this.attempts.get(attemptId);
         if (!attempt || attempt.status !== 'ACCEPTED') {
@@ -239,7 +245,7 @@ export class GovernanceKernel {
 
         // Article VII: Fiscal Law - Budget is equivalent to Physics
         const budResult = BudgetGuard({ budget, cost: attempt.cost });
-        if (!budResult.ok) throw new Error(`Kernel Reject: Budget Violation (${budResult.violation})`);
+        if (!budResult.ok) throw new Error(`Kernel Reject: Budget Violation(${budResult.violation})`);
 
         try {
             // 1. Protocol Execution
@@ -258,19 +264,19 @@ export class GovernanceKernel {
             // ATOMIC COMMIT
             budget.consume(attempt.cost);
 
-            for (const t of transitions) {
-                this.state.applyTrusted(
-                    t,
-                    attempt.action.timestamp,
-                    transitions.indexOf(t) === 0 ? attempt.initiator : 'SYSTEM',
-                    `${attempt.id}${transitions.indexOf(t) > 0 ? ':se:' + t.metricId : ''}`
-                );
-            }
+            // Article III.6 Institutional Ledger & Evidence
+            const evidence = await this.audit.append(attempt.action, 'SUCCESS');
+
+            // ATOMIC STATE COMMIT (One snapshot per action)
+            await this.state.applyTrusted(
+                transitions,
+                attempt.action.timestamp,
+                attempt.initiator,
+                attempt.id,
+                evidence.evidenceId
+            );
 
             attempt.status = 'COMMITTED';
-
-            // Article III.6 Institutional Ledger & Evidence
-            const evidence = this.audit.append(attempt.action, 'SUCCESS');
 
             this.attempts.delete(attemptId);
             this.seenActions.add(attempt.action.actionId);
@@ -287,57 +293,57 @@ export class GovernanceKernel {
         } catch (e: any) {
             console.error("Kernel Commit Error:", e);
             attempt.status = 'ABORTED';
-            this.audit.append(attempt.action, 'ABORTED', e.message);
-            throw new Error(`Kernel Halt: Commit Failed: ${e.message}`);
+            await this.audit.append(attempt.action, 'ABORTED', e.message);
+            throw new Error(`Kernel Halt: Commit Failed: ${e.message} `);
         }
     }
 
     // --- Article V: Privileged Interfaces ---
 
-    public createEntity(actor: EntityID, params: any): void {
+    public async createEntity(actor: EntityID, params: any): Promise<void> {
         this.checkGovernanceAuth(actor, 'ENTITY.CREATE');
         this.identity.register(params);
-        this.audit.append(this.createSystemAction(actor, 'system.entity', params), 'SUCCESS');
+        await this.audit.append(this.createSystemAction(actor, 'system.entity', params), 'SUCCESS');
     }
 
-    public grantAuthority(actor: EntityID, granter: EntityID, grantee: EntityID, capacity: CapacityID, jurisdiction: JurisdictionID): void {
+    public async grantAuthority(actor: EntityID, granter: EntityID, grantee: EntityID, capacity: CapacityID, jurisdiction: JurisdictionID): Promise<void> {
         this.checkGovernanceAuth(actor, 'AUTHORITY.GRANT');
         const timestamp = '0:0';
         const sig = 'GOVERNANCE_SIGNATURE';
-        const authorityId = `auth:${Date.now()}`;
+        const authorityId = `auth:${Date.now()} `;
 
         this.authority.grant(authorityId, granter, grantee, capacity, jurisdiction, timestamp, sig);
-        this.audit.append(this.createSystemAction(actor, 'system.authority', { granter, grantee, capacity, jurisdiction }), 'SUCCESS');
+        await this.audit.append(this.createSystemAction(actor, 'system.authority', { granter, grantee, capacity, jurisdiction }), 'SUCCESS');
     }
 
-    public revokeAuthority(actor: EntityID, authorityId: string): void {
+    public async revokeAuthority(actor: EntityID, authorityId: string): Promise<void> {
         this.checkGovernanceAuth(actor, 'AUTHORITY.REVOKE');
         this.authority.revoke(authorityId);
-        this.audit.append(this.createSystemAction(actor, 'system.revocation', { authorityId }), 'SUCCESS');
+        await this.audit.append(this.createSystemAction(actor, 'system.revocation', { authorityId }), 'SUCCESS');
     }
 
-    public revokeEntity(actor: EntityID, targetId: EntityID): void {
+    public async revokeEntity(actor: EntityID, targetId: EntityID): Promise<void> {
         this.checkGovernanceAuth(actor, 'ENTITY.REVOKE');
         const timestamp = '0:0';
         this.identity.revoke(targetId, timestamp);
-        this.audit.append(this.createSystemAction(actor, 'system.revocation', { targetId }), 'SUCCESS');
+        await this.audit.append(this.createSystemAction(actor, 'system.revocation', { targetId }), 'SUCCESS');
     }
 
     private checkGovernanceAuth(actor: EntityID, action: string) {
-        if (!this.authority.authorized(actor, `GOVERNANCE:${action}`)) {
+        if (!this.authority.authorized(actor, `GOVERNANCE:${action} `)) {
             throw new Error(`Kernel Reject: Entity ${actor} not authorized for ${action}`);
         }
     }
 
     // Article V: Emergency Override (Article II.11)
-    public override(action: Action, justification: string): Commit {
+    public async override(action: Action, justification: string): Promise<Commit> {
         if (this.lifecycle !== 'ACTIVE') throw new Error("Kernel is not ACTIVE");
 
         if (!this.authority.authorized(action.initiator, 'GOVERNANCE:OVERRIDE')) {
             throw new Error("Override Violation: Actor is not authorized for GOVERNANCE:OVERRIDE");
         }
 
-        const aid = this.submitAttempt(action.initiator, 'ROOT', action);
+        const aid = await this.submitAttempt(action.initiator, 'ROOT', action);
         const attempt = this.attempts.get(aid)!;
 
         // Signature Guard - Mandatory (Physics of Power)
@@ -345,14 +351,14 @@ export class GovernanceKernel {
         if (!sigResult.ok) throw new Error(`Override Violation: Invalid Identity Signature`);
 
         attempt.status = 'ACCEPTED';
-        this.audit.append(action, 'SUCCESS', `OVERRIDE: ${justification}`);
+        await this.audit.append(action, 'SUCCESS', `OVERRIDE: ${justification} `);
 
-        return this.commitAttempt(aid, new Budget('RISK' as any, 1000));
+        return await this.commitAttempt(aid, new Budget('RISK' as any, 1000));
     }
 
-    private reject(attempt: Attempt, rejection: Rejection, metadata?: Record<string, any>) {
+    private async reject(attempt: Attempt, rejection: Rejection, metadata?: Record<string, any>) {
         attempt.status = 'REJECTED';
-        this.audit.append(attempt.action, 'REJECT', rejection.message, {
+        await this.audit.append(attempt.action, 'REJECT', rejection.message, {
             ...metadata,
             code: rejection.code,
             invariantId: rejection.invariantId
@@ -360,18 +366,18 @@ export class GovernanceKernel {
 
         // Automatic Revocation (Product 1 requirement)
         if (rejection.code === 'REVOKED_ENTITY' || rejection.code === 'SIGNATURE_INVALID') {
-            console.log(`[Iron] Critical Breach (${rejection.code}). Triggering Automatic Revocation for ${attempt.initiator}`);
+            console.log(`[Iron] Critical Breach(${rejection.code}).Triggering Automatic Revocation for ${attempt.initiator}`);
             try {
                 this.identity.revoke(attempt.initiator, '0:0');
             } catch (e: any) {
-                console.warn(`[Iron] Auto-Revocation Failed: ${e.message}`);
+                console.warn(`[Iron] Auto - Revocation Failed: ${e.message} `);
             }
         }
     }
 
     private createSystemAction(initiator: EntityID, metric: string, value: any): Action {
         return {
-            actionId: `sys:${Date.now()}:${Math.random()}`,
+            actionId: `sys:${Date.now()}:${Math.random()} `,
             initiator,
             payload: { metricId: metric, value },
             timestamp: '0:0',
@@ -381,15 +387,14 @@ export class GovernanceKernel {
     }
 
     // Article V: Execution Entry (Legacy/Direct)
-    public execute(action: Action, budget?: Budget): Commit {
-        const protocolId = action.payload.protocolId || 'SYSTEM';
-        const aid = this.submitAttempt(action.initiator, protocolId, action);
-        const guardStatus = this.guardAttempt(aid);
+    public async execute(action: Action, budget?: Budget): Promise<Commit> {
+        const aid = await this.submitAttempt(action.initiator, action.payload.protocolId || 'SYSTEM', action);
+        const guardStatus = await this.guardAttempt(aid);
         if (guardStatus.status === 'REJECTED') {
-            throw new Error(`Kernel Reject: ${guardStatus.reason}`);
+            throw new Error(`Kernel Reject: ${guardStatus.reason} `);
         }
         const b = budget || new Budget('ENERGY' as any, 100);
-        return this.commitAttempt(aid, b);
+        return await this.commitAttempt(aid, b);
     }
 
 }

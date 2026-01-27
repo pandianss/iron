@@ -48,13 +48,23 @@ All features and roadmap items must survive this filter.
 
 ---
 
-## 4. Scope Rulings (Pre-emptive)
+## 5. Threat Model
 
-| Feature Proposal | Verdict | Rationale |
-| :--- | :--- | :--- |
-| **"Add a Chat tab for families"** | **REJECT** | Violates "No Chat". Communication is not Continuity. |
-| **"Store family photos"** | **REJECT** | Violates "Governed Objects Only". Use Google Photos. Iron stores the *Will* that assigns the photos. |
-| **"Remind me to buy milk"** | **REJECT** | Violates "No Productivity". Not continuity-critical. |
-| **"Sign my Child's Permission Slip"** | **APPROVE** | **Authority**. It is an attestation of consent with legal weight. |
-| **"Emergency Access to Vault if I'm in hospital"** | **APPROVE** | **Continuity**. Core use case for conditional authority transfer. |
-| **"Pay my Netflix bill"** | **REJECT** | Financial Convenience. Not Authority Governance. |
+- **Adversary Type**: "The Compromised Device" — A malicious actor gains persistent file-level access but cannot break Ed25519 cryptography.
+- **Key Risk**: "State Corruption" — Injecting false metrics or replaying legitimate but expired actions.
+- **Mitigation**: 
+    - Full Merkle-DAG validation on every boot.
+    - Deterministic replay of all events to verify head-state.
+    - Hardware/Secured signatures (L0) required for all transitions.
+
+## 6. Non-negotiable Guarantees
+
+- **G1: No Invisible Transitions**: No state change can occur without an associated hashed and signed event in the audit log.
+- **G2: Authority-First**: If the `AuthorityEngine` (L1) rejects a granter/grantee relationship, the Kernel must halt execution of that branch immediately.
+- **G3: Immutability of History**: Changing a single byte in the historical event log must result in a Merkle failure and kernel suspension.
+
+## 7. Failure Semantics
+
+- **FS1: Fail-Hard/Loud**: On any invariant breach, the Kernel transitions to `VIOLATED` and refuses all further commands.
+- **FS2: Atomic Rollback**: If a commit fails (e.g., IO error), the in-memory state must not reflect the partial results; the system must restart and replay to the last known good hash.
+- **FS3: Traceability**: Every failure must be associated with the specific `ActionID` that triggered it and the specific `Guard` that caught it.

@@ -1,27 +1,9 @@
-// src/L2/State.ts
+import type { Action, ActionPayload, Mutation, EntityID } from '../L0/Ontology.js';
 import { produce } from 'immer';
-import type { EntityID } from '../L0/Ontology.js';
 import { IdentityManager } from '../L1/Identity.js';
 import { verifySignature, hash, hashState, canonicalize } from '../L0/Crypto.js';
 import { AuditLog } from '../L5/Audit.js';
 import { LogicalTimestamp } from '../L0/Kernel.js';
-
-
-// --- Action ---
-export interface ActionPayload {
-    protocolId?: string;
-    metricId: string;
-    value: any;
-}
-
-export interface Action {
-    actionId: string;
-    initiator: EntityID;
-    payload: ActionPayload;
-    timestamp: string;
-    expiresAt: string;
-    signature: string;
-}
 
 
 // --- Metrics ---
@@ -98,9 +80,9 @@ export class StateModel {
         });
     }
 
-    public apply(action: Action): void {
+    public async apply(action: Action): Promise<void> {
         try {
-            // 1. Verify Identity & Signature
+            // ... (rest of method)
             const entity = this.identityManager.get(action.initiator);
             if (!entity) throw new Error("Unknown Entity");
             if (entity.status === 'REVOKED') throw new Error("Entity Revoked");
@@ -109,22 +91,16 @@ export class StateModel {
 
             if (action.signature !== 'GOVERNANCE_SIGNATURE') {
                 if (!verifySignature(data, action.signature, entity.publicKey)) {
-                    console.log("[DEBUG] Signature Fail:");
-                    console.log("Data:", data);
-                    console.log("Sig:", action.signature);
-                    console.log("PubKey:", entity.publicKey);
-                    // Check if it's a "trusted" system key (bypass for mocked tests if needed, but risky)
-                    // For Phase 1 strictness: Fail hard.
                     throw new Error("Invalid Action Signature");
                 }
             }
 
             // 2. Delegate to common application logic
-            this.applyTrusted(action.payload, action.timestamp, action.initiator, action.actionId);
+            await this.applyTrusted(action.payload, action.timestamp, action.initiator, action.actionId);
 
         } catch (e: any) {
             console.warn(`State Transition Failed: ${e.message}`);
-            this.auditLog.append(action, 'FAILURE');
+            await this.auditLog.append(action, 'FAILURE');
             throw e;
         }
     }
@@ -142,68 +118,81 @@ export class StateModel {
     }
 
     /**
-     * Applies a state transition and creates a cryptographic snapshot.
+     * Applies an atomic set of state transitions and creates a single cryptographic snapshot.
+     * Requires evidenceId from the AuditLog to maintain linkage.
      */
-    public applyTrusted(payload: ActionPayload, timestamp: string, initiator: string = 'system', actionId?: string): Action {
-        this.validateMutation(payload);
+    public async applyTrusted(
+        mutations: Mutation[],
+        timestamp: string,
+        initiator: string = 'system',
+        actionId?: string,
+        evidenceId?: string
+    ): Promise<Action> {
+        if (!evidenceId) throw new Error("Kernel Error: evidenceId required for state transition");
+        if (mutations.length === 0) throw new Error("Kernel Error: No mutations provided");
 
-        // 2. Monotonic Time Check
+        // 1. Validation & Monotonicity
         const current = LogicalTimestamp.fromString(timestamp);
         const globalLast = LogicalTimestamp.fromString(this.currentState.lastUpdate);
 
         if (current.time < globalLast.time || (current.time === globalLast.time && current.logical < globalLast.logical)) {
-            throw new Error("Time Violation: Global Monotonicity Breach (Time moved backwards)");
+            throw new Error("Time Violation: Global Monotonicity Breach");
         }
 
-        const lastState = this.currentState.metrics[payload.metricId];
-        if (lastState) {
-            const last = LogicalTimestamp.fromString(lastState.updatedAt);
+        const validActionId = actionId || hash(`trusted:${initiator}:${mutations[0].metricId}:${timestamp}`);
 
-            if (current.time < last.time || (current.time === last.time && current.logical < last.logical)) {
-                throw new Error("Time Violation: Monotonicity Breach");
-            }
-        }
-
-        const validActionId = actionId || hash(`trusted:${initiator}:${payload.metricId}:${timestamp}:${Math.random()}`);
-
-        const action: Action = {
-            actionId: validActionId,
-            initiator,
-            payload,
-            timestamp,
-            expiresAt: '0',
-            signature: 'TRUSTED'
-        };
-
-        // 3. Commit SUCCESS to Audit Log
-        const logEntry = this.auditLog.append(action, 'SUCCESS');
-
-        // 4. Calculate New State (Immutable Transition)
+        // 2. Calculate New State (Atomic Transition)
         const previousSnapshot = this.snapshots[this.snapshots.length - 1];
         if (!previousSnapshot) throw new Error("Critical: Genesis Block Missing");
 
-        // Calculate the local transition hash for the metric
-        const prevStateHash = lastState ? lastState.stateHash : '0000000000000000000000000000000000000000000000000000000000000000';
-        const transitionHash = hash(prevStateHash + logEntry.evidenceId);
-
         const finalState = produce(this.currentState, draft => {
-            const newStateValue: StateValue = {
-                value: payload.value,
-                updatedAt: timestamp,
-                evidenceHash: logEntry.evidenceId,
-                stateHash: transitionHash
-            };
-            draft.metrics[payload.metricId] = newStateValue;
+            for (const mutation of mutations) {
+                this.validateMutation(mutation);
+                const lastState = draft.metrics[mutation.metricId];
+                if (lastState) {
+                    const last = LogicalTimestamp.fromString(lastState.updatedAt);
+                    if (current.time < last.time || (current.time === last.time && current.logical < last.logical)) {
+                        throw new Error(`Time Violation: Monotonicity Breach for metric ${mutation.metricId}`);
+                    }
+                }
+
+                // Calculate the local transition hash for the metric
+                const prevStateHash = lastState ? lastState.stateHash : '0000000000000000000000000000000000000000000000000000000000000000';
+                const transitionHash = hash(prevStateHash + evidenceId);
+
+                const newStateValue: StateValue = {
+                    value: mutation.value,
+                    updatedAt: timestamp,
+                    evidenceHash: evidenceId,
+                    stateHash: transitionHash
+                };
+                draft.metrics[mutation.metricId] = newStateValue;
+
+                // Update Cache (Outside produce, after this block)
+            }
             draft.version++;
             draft.lastUpdate = timestamp;
         });
 
-        // 5. Calculate Global Merkle Root over all metrics
+        // Update History Cache
+        for (const m of mutations) {
+            const nv = finalState.metrics[m.metricId];
+            if (nv) {
+                let list = this.historyCache.get(m.metricId);
+                if (!list) {
+                    list = [];
+                    this.historyCache.set(m.metricId, list);
+                }
+                list.push(nv);
+            }
+        }
+
+        // 3. Calculate Global Merkle Root over all metrics
         const allMetrics = Object.entries(finalState.metrics).sort((a, b) => a[0].localeCompare(b[0]));
-        // Hash of all transition hashes
         const globalStateParams = allMetrics.map(([k, v]) => `${k}:${v.stateHash}`).join('|');
         const globalRoot = hashState(Buffer.from(globalStateParams + finalState.version));
 
+        // 4. Create State Snapshot (Institutional Ledger Lock)
         const canonical: [number, string, string, string, string] = [
             finalState.version,
             validActionId,
@@ -211,10 +200,9 @@ export class StateModel {
             globalRoot,
             previousSnapshot.hash
         ];
-        // The Snapshot Hash is now the hash of this Tuple, enforcing strict structure
+
         const snapshotHash = hash(canonicalize(canonical));
 
-        // 6. Create Snapshot
         const snapshot: StateSnapshot = {
             state: finalState,
             hash: snapshotHash,
@@ -226,14 +214,15 @@ export class StateModel {
         this.snapshots.push(snapshot);
         this.currentState = finalState;
 
-        // Update Cache
-        const newState = finalState.metrics[payload.metricId];
-        if (newState) {
-            if (!this.historyCache.has(payload.metricId)) this.historyCache.set(payload.metricId, []);
-            this.historyCache.get(payload.metricId)?.push(newState);
-        }
-
-        return action;
+        // Return the action representation (mostly for logging/mapping)
+        return {
+            actionId: validActionId,
+            initiator,
+            payload: mutations[0] as any, // Legacy/Simplified return
+            timestamp,
+            expiresAt: '0',
+            signature: 'TRUSTED'
+        };
     }
 
     public verifyIntegrity(): boolean {

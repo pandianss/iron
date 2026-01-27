@@ -24,6 +24,7 @@ export interface Protocol extends ProtocolPrimitive {
     // Runtime execution fields (Legacy support / MVP mapping)
     execution: any[];
     preconditions: any[];
+    originPluginId?: string; // If registered via plugin
 }
 
 export interface Rule {
@@ -72,6 +73,7 @@ export const ProtocolSchema = z.object({
     category: z.enum(['Intent', 'Habit', 'Budget', 'Authority', 'Accountability', 'Risk', 'Continuity', 'Incapacity', 'Coordination', 'Performance', 'Intelligence']),
     lifecycle: z.enum(['PROPOSED', 'RATIFIED', 'ACTIVE', 'SUSPENDED', 'DEPRECATED', 'REVOKED']).default('PROPOSED'),
     strict: z.boolean().optional(),
+    originPluginId: z.string().optional(),
     execution: z.array(RuleSchema),
     preconditions: z.array(PredicateSchema)
 });

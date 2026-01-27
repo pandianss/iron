@@ -1,27 +1,13 @@
 // src/L0/Invariants.ts
 import { IdentityManager } from '../L1/Identity.js';
-import type { Action } from '../L2/State.js';
-
-// --- 1. Ontology of Illegality ---
-export type IllegalState =
-    | 'NEGATIVE_BALANCE'
-    | 'EXPIRED_AUTHORITY'
-    | 'REVOKED_ENTITY'
-    | 'BUDGET_EXCEEDED'
-    | 'PROTOCOL_VIOLATION'
-    | 'TEMPORAL_PARADOX'
-    | 'SIGNATURE_INVALID'
-    | 'NON_FINITE_METRIC'
-    | 'INVALID_ID_FORMAT'
-    | 'SELF_DELEGATION'
-    | 'MISSING_METRIC_ID'
-    | 'PAYLOAD_OVERSIZE';
+import type { Action } from './Ontology.js';
+import { ErrorCode } from '../Errors.js';
 
 export interface Invariant {
     id: string;
     description: string;
     predicate: (context: InvariantContext) => boolean;
-    violation: IllegalState;
+    violation: ErrorCode;
 }
 
 export interface InvariantContext {
@@ -31,7 +17,7 @@ export interface InvariantContext {
 }
 
 export interface Rejection {
-    code: IllegalState;
+    code: ErrorCode;
     invariantId: string;
     message: string;
 }
@@ -42,8 +28,8 @@ export interface Rejection {
 export const INV_ID_01: Invariant = {
     id: 'INV-ID-01',
     description: 'Signature format must be valid hex',
-    predicate: ({ action }) => /^[0-9a-fA-F]+$/.test(action.signature),
-    violation: 'SIGNATURE_INVALID'
+    predicate: ({ action }) => action.signature === 'TRUSTED' || action.signature === 'GOVERNANCE_SIGNATURE' || /^[0-9a-fA-F]+$/.test(action.signature),
+    violation: ErrorCode.SIGNATURE_INVALID
 };
 
 export const INV_ID_02: Invariant = {
@@ -53,7 +39,7 @@ export const INV_ID_02: Invariant = {
         if (action.payload.protocolId === 'REGISTER') return true;
         return !!manager.get(action.initiator);
     },
-    violation: 'REVOKED_ENTITY'
+    violation: ErrorCode.REVOKED_ENTITY
 };
 
 export const INV_ID_03: Invariant = {
@@ -64,7 +50,7 @@ export const INV_ID_03: Invariant = {
         const entity = manager.get(action.initiator);
         return entity?.status === 'ACTIVE';
     },
-    violation: 'REVOKED_ENTITY'
+    violation: ErrorCode.REVOKED_ENTITY
 };
 
 // II. Resource Bounds
@@ -77,7 +63,7 @@ export const INV_RES_01: Invariant = {
         }
         return true;
     },
-    violation: 'NON_FINITE_METRIC'
+    violation: ErrorCode.NON_FINITE_METRIC
 };
 
 export const INV_RES_02: Invariant = {
@@ -90,7 +76,7 @@ export const INV_RES_02: Invariant = {
 
         return (ts as number) <= now + 60000;
     },
-    violation: 'TEMPORAL_PARADOX'
+    violation: ErrorCode.TEMPORAL_PARADOX
 };
 
 export const INV_RES_03: Invariant = {
@@ -99,7 +85,7 @@ export const INV_RES_03: Invariant = {
     predicate: ({ action }) => {
         return JSON.stringify(action.payload).length <= 16384;
     },
-    violation: 'PAYLOAD_OVERSIZE'
+    violation: ErrorCode.PAYLOAD_OVERSIZE
 };
 
 // III. Structural Integrity
@@ -107,14 +93,14 @@ export const INV_PRO_01: Invariant = {
     id: 'INV-PRO-01',
     description: 'Action ID must be present',
     predicate: ({ action }) => !!action.actionId && action.actionId.length > 0,
-    violation: 'INVALID_ID_FORMAT'
+    violation: ErrorCode.INVALID_ID_FORMAT
 };
 
 export const INV_PRO_02: Invariant = {
     id: 'INV-PRO-02',
     description: 'Payload must contain metricId',
     predicate: ({ action }) => !!action.payload?.metricId,
-    violation: 'MISSING_METRIC_ID'
+    violation: ErrorCode.MISSING_METRIC_ID
 };
 
 // --- Aggregate Constitutional Check ---

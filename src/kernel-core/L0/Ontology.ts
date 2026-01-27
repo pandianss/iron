@@ -92,15 +92,23 @@ export interface Protocol {
     completionConditions: string[];
 }
 
-// --- 8. Action ---
+// --- 8. Action & Mutations ---
+export interface Mutation {
+    metricId: string;
+    value: any;
+}
+
+export interface ActionPayload extends Mutation {
+    protocolId?: string;
+}
+
 export type ActionID = string;
 export interface Action {
-    id: ActionID;
+    actionId: ActionID;
     initiator: EntityID;
-    invokedCapacity: CapacityID;
-    protocolReference: ProtocolID;
-    declaredIntent: string;
-    timestamp: string; // LogicalTimestamp
+    payload: ActionPayload;
+    timestamp: string;
+    expiresAt: string;
     signature: string;
 }
 

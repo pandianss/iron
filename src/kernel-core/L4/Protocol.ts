@@ -11,15 +11,43 @@ import { hash } from '../L0/Crypto.js';
 
 export type { Protocol, ProtocolBundle };
 
-export interface Mutation {
-    metricId: string;
-    value: any;
-}
+import type { Mutation } from '../L0/Ontology.js';
+
+import { PluginRegistry } from '../L0/PluginRegistry.js';
 
 export class ProtocolEngine {
     private protocols: Map<string, Protocol> = new Map();
 
-    constructor(private state: StateModel) { }
+    constructor(private state: StateModel, private pluginRegistry?: PluginRegistry) { }
+
+    /**
+     * Register a protocol from a plugin
+     * Enforces capability checks.
+     */
+    registerFromPlugin(pluginId: string, p: Protocol): string {
+        if (!this.pluginRegistry) throw new Error("ProtocolEngine: PluginRegistry not configured");
+
+        const plugin = this.pluginRegistry.get(pluginId);
+        if (!plugin) throw new Error(`ProtocolEngine: Plugin ${pluginId} not found`);
+
+        // Check capability
+        const cap = plugin.manifest.capabilities.find(c => c.type === 'protocol');
+        if (!cap || cap.type !== 'protocol') {
+            throw new Error(`ProtocolEngine: Plugin ${pluginId} does not have 'protocol' capability`);
+        }
+
+        // Check targets (metrics)
+        const targets = this.getActionMetrics(p);
+        for (const t of targets) {
+            if (!cap.targets.includes(t)) {
+                throw new Error(`ProtocolEngine: Plugin ${pluginId} is not authorized to target metric ${t}`);
+            }
+        }
+
+        // Set origin and register
+        p.originPluginId = pluginId;
+        return this.propose(p);
+    }
 
     // V.1 Creation Law: All protocols start as PROPOSED
     propose(p: Protocol): string {
@@ -166,6 +194,15 @@ export class ProtocolEngine {
 
         for (const p of this.protocols.values()) {
             if (p.lifecycle !== 'ACTIVE' && p.lifecycle !== 'DEPRECATED') continue;
+
+            // Integrity Check: If originated from plugin, that plugin MUST be ACTIVE or DEPRECATED
+            if (p.originPluginId && this.pluginRegistry) {
+                const plugin = this.pluginRegistry.get(p.originPluginId);
+                if (!plugin || (plugin.lifecycle !== 'ACTIVE' && plugin.lifecycle !== 'DEPRECATED')) {
+                    // Skip execution of protocols from inactive/revoked plugins
+                    continue;
+                }
+            }
 
             if (this.checkPreconditions(p, proposed)) {
                 if (p.lifecycle === 'DEPRECATED') {

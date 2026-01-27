@@ -1,5 +1,5 @@
 
-import type { Protocol } from '../../L4/ProtocolTypes.js';
+import type { Protocol } from '../../../kernel-core/L4/ProtocolTypes.js';
 
 export const SecurityProtocol: Protocol = {
     id: 'iron.protocol.security.v1',

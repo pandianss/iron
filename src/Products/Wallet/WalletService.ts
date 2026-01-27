@@ -1,7 +1,7 @@
 
 import { KernelPlatform } from '../../Platform/KernelPlatform.js';
 import type { Command } from '../../Platform/KernelPlatform.js';
-import { randomNonce } from '../../L0/Crypto.js';
+import { randomNonce } from '../../kernel-core/L0/Crypto.js';
 
 export interface WalletState {
     id: string;
