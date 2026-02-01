@@ -1,131 +1,263 @@
-# IRON System Architecture
+# IRON Architecture
 
-> **Definition**: IRON is a hierarchical Governance Operating System designed to enforce "Institutional Physics".
->
-> **Institutional Physics** refers to the invariant laws governing authority, state transition, accountability, and resource constraints that cannot be violated by any actor, including the system administrators.
->
-> **Identity**: IRON is an **Executable Kernel**. It is not a protocol (though it contains them) and not a reference architecture (though it provides one). It is the machine that enforces the law.
+**Layer-by-Layer Breakdown of the Governance Kernel**
 
 ---
 
-## I. Architectural Objects
-The system is composed of seven irreducible primitives.
+## Overview
 
-1.  **Kernel**: The deterministic state machine foundation.
-2.  **Identity**: The cryptographic actor definition (Public Key + Identity Proof).
-3.  **State**: The append-only, Merkle-linked ledger of truth.
-4.  **Intent**: A signed request to change state (Action).
-5.  **Protocol**: A ratifiable, versioned logic module defining state transition rules.
-6.  **Guard**: A pure function that accepts or rejects Intents based on invariants.
-7.  **Capability**: A distinct unit of authority granted to an Identity.
-8.  **Plugin**: A signed, restricted extension module providing Guards, Protocols, or Projections.
+IRON is structured as a **6-layer stack** (L0-L5), each enforcing a specific constitutional principle. Layers are **strictly isolated**: higher layers may only interact with lower layers through defined interfaces.
 
----
-
-## II. Layer Laws (L0–L7)
-The system is stratified into **Law-Bound Layers** (mechanisms) and **Replaceable Layers** (policy/application).
-
-### A. The Governance Substrate (Law-Bound)
-*These layers must obey strict kernel invariants. They cannot be bypassed.*
-
-#### Layer 0: Physics (The Invariant Core)
-*   **Role**: Determinism and Enforcment.
-*   **Invariants**:
-    1.  **Authority**: No action executes without valid cryptographic provenance.
-    2.  **Legitimacy**: No state transition occurs outside the `Attempt -> Guard -> Commit` cycle.
-    3.  **Audit**: No mutation occurs without generating a verifiable evidence trail.
-    4.  **Isolation**: The Kernel must be side-effect free; it inputs Intents and outputs State/Audit.
-    5.  **Plugin Context**: Plugins must execute within a restricted `PluginContext`, with NO direct access to Kernel internals.
-
-#### Layer 1: Identity (The Authority Algebra)
-*   **Role**: Definition of "Who".
-*   **Invariants**:
-    1.  **Closure**: Authority is closed under delegation. If A delegates to B, A must hold the capability.
-    2.  **Revocation**: Revocation is immediate and propagates downstream (eventual consistency acceptable only if specified).
-    3.  **Scope**: No identity exists outside the `IdentityManager` registry.
-
-#### Layer 2: State (The Ledger of Truth)
-*   **Role**: Definition of "What".
-*   **Invariants**:
-    1.  **Immutability**: Past state cannot be modified, only appended to.
-    2.  **Continuity**: Every state snapshot $S_n$ must cryptographically reference $S_{n-1}$.
-    3.  **Truth**: Metrics inside L2 are the *only* authoritative source of system reality.
-
-### B. The Organizational Runtime (Gov-Ops)
-*These layers leverage the kernel to run the organization.*
-
-#### Layer 3: Simulation (The Advisory Plane)
-*   **Role**: Forecasting and Risk Assessment (Monte Carlo).
-*   **Invariants**:
-    1.  **Advisory Only**: Simulation outputs are non-binding.
-    2.  **Isolation**: No simulated state may mutate canonical L2 state.
-    3.  **Divergence**: Divergence between Simulation and Reality triggers an "Anomaly" event, not a fault.
-
-#### Layer 4: Protocols (The Legislature)
-*   **Role**: Definition of "How".
-*   **Laws**:
-    1.  **Ratification**: Code does not execute until Ratified by an Authority.
-    2.  **Versioned**: All protocols are immutable once active; changes require new versions.
-    3.  **Capability Bound**: Protocols originating from Plugins are strictly limited to the Metric Targets declared in the Plugin Manifest.
-
-#### Layer 5: Audit (The Judiciary)
-*   **Role**: Evidence and Proof.
-*   **Laws**:
-    1.  **Completeness**: Every `REJECT` and `SUCCESS` is recorded.
-    2.  **Exportability**: Proofs must be verifiable by external systems without private keys.
-
-### C. The Application Surface (Replaceable)
-*These layers are interfaces. They have no authority.*
-
-#### Layer 6: Interface (The API)
-*   **Role**: Transport and Translation.
-*   **Laws**:
-    1.  **Read-Only Optimization**: May cache state but is never the source of truth.
-    2.  **Passthrough**: All writes MUST pass primarily to L0.
-
-#### Layer 7: Experience (The UI)
-*   **Role**: Human Interaction.
-*   **Laws**:
-    1.  **No Logic**: Does not enforce rules (Kernel does). Only visualizes them.
+```
+┌─────────────────────────────────────┐
+│  L5: Audit (Accountability)         │  → Immutable Evidence Chain
+├─────────────────────────────────────┤
+│  L4: Protocol (Reactive Logic)      │  → Business Rules as Code
+├─────────────────────────────────────┤
+│  L3: Simulation (Projection)        │  → State Forecasting
+├─────────────────────────────────────┤
+│  L2: State (Truth Store)            │  → Merkle Chain of Snapshots
+├─────────────────────────────────────┤
+│  L1: Identity (Entities & Authority)│  → Cryptographic Principals
+├─────────────────────────────────────┤
+│  L0: Kernel (Guards & Invariants)   │  → Constitutional Enforcement
+└─────────────────────────────────────┘
+```
 
 ---
 
-## III. Execution Topology
-The flow of an Action through the system:
+## L0: Kernel (Constitutional Enforcement)
 
-1.  **Origination** (L7): User constructs an Intent (Payload).
-2.  **Signing** (L6): Intent is signed by User's Private Key.
-3.  **Entry** (L0): Intent enters the Boundary Guard.
-    *   *Check*: Signature Validity.
-    *   *Check*: Message Integrity.
-4.  **Authority Check** (L1): `AuthorityGuard` verifies Grant/Capability.
-5.  **Rejection Mechanics** (L4): `ProtocolGuard` runs Logic rules.
-    *   *If Fail*: Intent -> `REJECT` -> Audit Log. Halt.
-6.  **Commit** (L2): `StateModel` applies mutation.
-    *   *Effect*: New Merkle Root.
-    *   *Effect*: New Audit Entry (`SUCCESS`).
+**Purpose**: Enforce the **Behavioural Constitution** through Guards and Invariants.
+
+### Components
+
+#### `Kernel.ts`
+The **GovernanceKernel** orchestrates the 3-phase execution model:
+1. **Submit**: Materialize an `Attempt` from an `Action`
+2. **Guard**: Validate via constitutional guards
+3. **Commit**: Apply state transitions atomically
+
+#### `Guards.ts`
+Pure functions that return `{ ok: true }` or `{ ok: false, violation: string }`:
+- **InvariantGuard**: Schema, type safety, anti-prototype pollution
+- **SignatureGuard**: Cryptographic identity verification
+- **ScopeGuard**: Authority and jurisdiction checks
+- **ReplayGuard**: Prevent duplicate action IDs
+- **BudgetGuard**: Fiscal law enforcement
+- **ProposalCooldownGuard**: Deliberation latency (NEW)
+- **MultiSigGuard**: Plurality requirement (NEW)
+
+#### `Invariants.ts`
+Hard constraints that **cannot be violated**:
+- `INV-ID-01`: All actions must have a valid, registered initiator
+- `INV-SEC-01`: Signatures must be cryptographically valid
+- `INV-STATE-01`: Metric IDs must not be reserved keywords
+
+#### `Crypto.ts`
+Cryptographic primitives:
+- `generateKeyPair()`: Ed25519 key generation
+- `signData()`, `verifySignature()`: Signature operations
+- `hash()`, `hashState()`: SHA-256 hashing
+- `canonicalize()`: Deterministic JSON serialization
 
 ---
 
-## IV. Boundary & Failure Laws
+## L1: Identity (Entities & Authority)
 
-### 1. Failure Semantics
-*   **Guard Failure**: If a Guard throws/fails, the system **Must Reject**. Fail-Closed.
-*   **Kernel Panic**: Any inconsistency in State Hashing triggers a `SYSTEM_HALT`.
-*   **Simulation Divergence**: If L3 predicts X and L2 produces Y, the system logs a `PRE_CRIME_ANOMALY` but proceeds with L2 (Reality wins).
-*   **Plugin Revocation**: If a Plugin is `REVOKED` or `DEPRECATED`, its associated Guards and Protocols are immediately bypassed or disabled.
+**Purpose**: Manage cryptographic identities and authority grants.
 
-### 2. Plugin Enforcement Law
-*   **Static Enforcement**: Plugins cannot be registered if they request overlapping Protocol targets or invalid Guard phases.
-*   **Runtime Enforcement**: Every plugin call is wrapped in a `PluginContext` that enforces read-only access to state and append-only access to audit.
-*   **Capability Check**: The Kernel MUST verify that a plugin still possesses the required capability *at the moment of execution*.
+### Components
 
-### 3. Upgrade Law
-*   **Kernel Evolution**: The Kernel code itself is immutable at runtime. Upgrades require a `MIGRATION` event (transfer of State Root to new Kernel instance).
-*   **Protocol Evolution**: Handled via L4 `deprecate` / `activate` lifecycle.
+#### `Identity.ts`
+- **IdentityManager**: Registry of entities (ACTOR, SYSTEM, ROOT)
+- **Entity**: `{ id, type, status, publicKey, identityProof }`
+- **AuthorityEngine**: Manages jurisdiction grants and capability checks
 
-### 3. Forbidden Architectures
-*   **Never**: Allow UI (L7) to write directly to Database (L2) bypassing Kernel (L0).
-*   **Never**: Allow Simulation (L3) to "auto-correct" Reality (L2).
-*   **Never**: Hardcode specific Identities (e.g., "The CEO") into Kernel Logic (L0). Always use Roles/Capabilities.
-*   **Never**: Allow a Plugin to access another Plugin's private state or memory.
+### Key Operations
+- `register(entity)`: Add a new identity
+- `revoke(entityId)`: Mark an entity as REVOKED
+- `grant(granter, grantee, capacity, jurisdiction)`: Delegate authority
+- `authorized(actor, capability)`: Check if actor has permission
+
+---
+
+## L2: State (Truth Store)
+
+**Purpose**: Maintain the **single source of truth** as a Merkle chain of state snapshots.
+
+### Components
+
+#### `State.ts`
+- **StateModel**: Immutable state manager
+- **StateSnapshot**: `{ state, hash, previousHash, actionId, timestamp }`
+- **MetricRegistry**: Schema definitions for all metrics
+
+### Key Operations
+- `applyTrusted(mutations, timestamp, initiator)`: Atomic state transition
+- `validateMutation(payload)`: Schema and type validation
+- `verifyIntegrity()`: Verify Merkle chain integrity
+- `get(metricId)`: Read current value
+- `getHistory(metricId)`: Read historical values
+
+### Guarantees
+- **Temporal Monotonicity**: Timestamps must strictly advance
+- **Cryptographic Linkage**: Each snapshot is hashed with `previousHash`
+- **Immutability**: Past snapshots are frozen and cannot be altered
+
+---
+
+## L3: Simulation (State Projection)
+
+**Purpose**: Project future state without committing mutations.
+
+### Components
+
+#### `Simulation.ts`
+- **SimulationEngine**: Runs "what-if" scenarios
+- **ReplayEngine**: Reconstructs state from audit log
+
+### Key Operations
+- `simulate(mutations, currentState)`: Project state changes
+- `replay(evidenceChain)`: Rebuild state from evidence
+
+---
+
+## L4: Protocol (Reactive Business Logic)
+
+**Purpose**: Encode business rules as **reactive protocols** that trigger on state changes.
+
+### Components
+
+#### `Protocol.ts`
+- **ProtocolEngine**: Manages protocol lifecycle
+- **Protocol**: `{ id, preconditions, mutations, status }`
+
+### Lifecycle
+1. **PROPOSED**: Protocol is submitted
+2. **RATIFIED**: Protocol is approved (requires cooldown)
+3. **ACTIVE**: Protocol is evaluating state changes
+4. **DEPRECATED**: Protocol is deactivated
+
+### Key Operations
+- `propose(protocol)`: Submit a new protocol
+- `ratify(protocolId, signature)`: Approve protocol (with cooldown check)
+- `activate(protocolId)`: Enable protocol evaluation
+- `evaluate(timestamp, mutation)`: Check if protocol triggers
+
+### Example Protocol
+```typescript
+{
+    id: 'iron.protocol.budget.v1',
+    preconditions: [
+        { metricId: 'budget.energy', operator: 'GT', threshold: 0 }
+    ],
+    mutations: [
+        { metricId: 'budget.energy', value: -10 }
+    ]
+}
+```
+
+---
+
+## L5: Audit (Accountability)
+
+**Purpose**: Maintain an **immutable, cryptographically sealed** record of all actions.
+
+### Components
+
+#### `Audit.ts`
+- **AuditLog**: Append-only evidence chain
+- **Evidence**: `{ evidenceId, previousEvidenceId, action, status, timestamp }`
+
+### Status Types
+- `ATTEMPT`: Action submitted
+- `ACCEPTED`: Passed all guards
+- `SUCCESS`: Committed to state
+- `REJECT`: Failed a guard
+- `ABORTED`: Error during commit
+
+### Key Operations
+- `append(action, status, reason)`: Add evidence entry
+- `verifyChain()`: Verify cryptographic integrity
+- `getHistory()`: Retrieve full audit trail
+
+### Guarantees
+- **Append-Only**: Evidence cannot be deleted or modified
+- **Cryptographic Sealing**: Each entry is hashed with `previousEvidenceId`
+- **Deviation Memory**: All rejections are permanently recorded
+
+---
+
+## Execution Flow
+
+```
+1. User creates Action (signed with private key)
+2. Kernel.submitAttempt() → Creates Attempt, logs ATTEMPT
+3. Kernel.guardAttempt() → Runs all Guards
+   ├─ REJECTED → Log REJECT, return error
+   └─ ACCEPTED → Log ACCEPTED, proceed
+4. Kernel.commitAttempt() → Execute Protocol, apply State
+   ├─ ABORTED → Log ABORTED, rollback
+   └─ SUCCESS → Log SUCCESS, update Merkle chain
+5. Return Commit { attemptId, newStateHash, cost }
+```
+
+---
+
+## Design Principles
+
+### 1. **Impossibility Before Deterrence**
+Guards return structural rejections, not warnings.
+
+### 2. **Irrevocable Binding**
+Every action is cryptographically signed and permanently attributed.
+
+### 3. **Behavioural Memory**
+All attempts (including failures) are logged immutably.
+
+### 4. **Targeted Friction**
+High-impact actions (Protocol ratification, OVERRIDE) require:
+- Temporal spacing (ProposalCooldown)
+- Plurality (MultiSig)
+
+### 5. **Continuity Bias**
+Irreversible actions face higher structural resistance.
+
+---
+
+## Extension Points
+
+### Adding a New Guard
+```typescript
+// src/kernel-core/L0/Guards.ts
+export const MyCustomGuard: Guard<{ input: any }> = ({ input }) => {
+    if (/* violation condition */) {
+        return FAIL(ErrorCode.CUSTOM_VIOLATION, "Reason");
+    }
+    return OK;
+};
+
+// Register in Kernel constructor
+this.guards.register('MY_GUARD', MyCustomGuard);
+```
+
+### Adding a New Protocol
+```typescript
+const myProtocol: Protocol = {
+    id: 'my.protocol.v1',
+    preconditions: [{ metricId: 'trigger.metric', operator: 'EQ', threshold: 1 }],
+    mutations: [{ metricId: 'result.metric', value: 100 }]
+};
+
+protocolEngine.propose(myProtocol);
+protocolEngine.ratify(myProtocol.id, 'SIGNATURE');
+protocolEngine.activate(myProtocol.id);
+```
+
+---
+
+## Next Steps
+
+- Read [CONSTITUTION.md](./CONSTITUTION.md) for the formal governance rules
+- Read [GUIDE.md](./GUIDE.md) for developer patterns and examples
