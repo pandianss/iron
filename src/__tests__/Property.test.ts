@@ -1,14 +1,14 @@
 
 import { describe, test, expect } from '@jest/globals';
 import fc from 'fast-check';
-import { GovernanceKernel } from '../Kernel.js';
-import { Budget } from '../L0/Kernel.js';
-import { IdentityManager } from '../L1/Identity.js';
-import type { Entity } from '../L1/Identity.js';
-import { AuthorityEngine } from '../L1/Identity.js';
-import { StateModel, MetricRegistry } from '../L2/State.js';
-import { ProtocolEngine } from '../L4/Protocol.js';
-import { AuditLog } from '../L5/Audit.js';
+import { GovernanceKernel } from '../kernel-core/Kernel.js';
+import { Budget } from '../kernel-core/L0/Kernel.js';
+import { IdentityManager } from '../kernel-core/L1/Identity.js';
+import type { Entity } from '../kernel-core/L1/Identity.js';
+import { AuthorityEngine } from '../kernel-core/L1/Identity.js';
+import { StateModel, MetricRegistry } from '../kernel-core/L2/State.js';
+import { ProtocolEngine } from '../kernel-core/L4/Protocol.js';
+import { AuditLog } from '../kernel-core/L5/Audit.js';
 import * as ed from '@noble/ed25519';
 
 // Generators
@@ -59,12 +59,12 @@ describe('Kernel Property Verification (Phase 3)', () => {
         return kernel;
     };
 
-    test('PROP_01: Crash Resilience (No Kernel Halt on Random Inputs)', () => {
-        fc.assert(
-            fc.property(genAction, (payload) => {
+    test('PROP_01: Crash Resilience (No Kernel Halt on Random Inputs)', async () => {
+        await fc.assert(
+            fc.asyncProperty(genAction, async (payload) => {
                 const kernel = setupKernel();
                 // Register metric on fly to avoid "Unknown Metric" errors masking deep logic
-                kernel.Registry.register({ id: payload.metricId, type: 'GAUGE' as any, description: 'Fuzz' });
+                (kernel as any).registry.register({ id: payload.metricId, type: 'GAUGE' as any, description: 'Fuzz' });
 
                 // Create signed action
                 // (Simplified signing for speed - standard crypto might be slow for fuzzing 1000s)
@@ -85,13 +85,12 @@ describe('Kernel Property Verification (Phase 3)', () => {
                 // To properly test SignatureGuard, we need real signatures.
                 // However, if we want to test "Bad Signature" rejection, we can pass junk.
                 // Let's ensure GOOD signature for valid crash testing.
-                // Wait - standard noble sign is async? No, we made it sync.
-                // But privKey is Uint8Array.
-                const sig = ed.sign(Buffer.from(data), privKey);
+                // Noble sign is async!
+                const sig = await ed.sign(Buffer.from(data), privKey);
                 action.signature = Buffer.from(sig).toString('hex');
 
                 try {
-                    kernel.execute(action as any, new Budget('RISK' as any, 1000));
+                    await kernel.execute(action as any, new Budget('RISK' as any, 1000));
                 } catch (e: any) {
                     // It is ACCEPTABLE for Kernel to throw "Kernel Reject" or standard errors.
                     // It is UNACCEPTABLE for it to throw "Kernel Halt" (System Crash) or unhandled exceptions.
@@ -107,14 +106,14 @@ describe('Kernel Property Verification (Phase 3)', () => {
         );
     });
 
-    test('PROP_02: Monotonicity (State Version Never Decreases)', () => {
-        fc.assert(
-            fc.property(fc.array(genAction, { minLength: 1, maxLength: 5 }), (payloads) => {
+    test('PROP_02: Monotonicity (State Version Never Decreases)', async () => {
+        await fc.assert(
+            fc.asyncProperty(fc.array(genAction, { minLength: 1, maxLength: 5 }), async (payloads) => {
                 const kernel = setupKernel();
                 let lastVer = 0;
 
                 for (const payload of payloads) {
-                    kernel.Registry.register({ id: payload.metricId, type: 'GAUGE' as any, description: 'Fuzz' });
+                    (kernel as any).registry.register({ id: payload.metricId, type: 'GAUGE' as any, description: 'Fuzz' });
 
                     const action = {
                         actionId: '00'.repeat(32), // In reality needs unique IDs for replays?
@@ -129,14 +128,14 @@ describe('Kernel Property Verification (Phase 3)', () => {
                     action.actionId = Buffer.from(ed.utils.randomPrivateKey().slice(0, 32)).toString('hex'); // Random hex
 
                     const data = `${action.actionId}:${action.initiator}:${JSON.stringify(action.payload)}:${action.timestamp}:${action.expiresAt}`;
-                    const sig = ed.sign(Buffer.from(data), privKey);
+                    const sig = await ed.sign(Buffer.from(data), privKey);
                     action.signature = Buffer.from(sig).toString('hex');
 
                     try {
-                        kernel.execute(action as any);
+                        await kernel.execute(action as any);
                     } catch (e) { } // Ignore rejections
 
-                    const newVer = kernel.State['currentState'].version;
+                    const newVer = (kernel.state as any).currentState.version;
                     if (newVer < lastVer) return false;
                     lastVer = newVer;
                 }

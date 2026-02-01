@@ -1,14 +1,14 @@
 
-import { jest, describe, test, expect, beforeEach, beforeAll } from '@jest/globals';
-import { DeterministicTime } from '../../L0/Kernel.js';
-import { IdentityManager, DelegationEngine, CapabilitySet } from '../../L1/Identity.js';
-import { StateModel, MetricRegistry, MetricType } from '../../L2/State.js';
-import { ProtocolEngine } from '../../L4/Protocol.js';
-import { AuditLog } from '../../L5/Audit.js';
-import { GovernanceKernel } from '../../Kernel.js';
+import { describe, test, expect, beforeEach } from '@jest/globals';
+import { DeterministicTime } from '../../kernel-core/L0/Kernel.js';
+import { IdentityManager, AuthorityEngine } from '../../kernel-core/L1/Identity.js';
+import { StateModel, MetricRegistry, MetricType } from '../../kernel-core/L2/State.js';
+import { ProtocolEngine } from '../../kernel-core/L4/Protocol.js';
+import { AuditLog } from '../../kernel-core/L5/Audit.js';
+import { GovernanceKernel } from '../../kernel-core/Kernel.js';
 import { GovernanceInterface } from '../../L6/Interface.js';
 import { SovereignApp } from '../App.js';
-import { generateKeyPair } from '../../L0/Crypto.js';
+import { generateKeyPair } from '../../kernel-core/L0/Crypto.js';
 
 describe('L7 Sovereign App', () => {
     let kernel: GovernanceKernel;
@@ -16,6 +16,7 @@ describe('L7 Sovereign App', () => {
     let app: SovereignApp;
     let identity: IdentityManager;
     let state: StateModel;
+    let authority: AuthorityEngine;
 
     const userKeys = generateKeyPair();
 
@@ -23,30 +24,47 @@ describe('L7 Sovereign App', () => {
         const audit = new AuditLog();
         const registry = new MetricRegistry();
         identity = new IdentityManager();
-        const delegation = new DelegationEngine(identity);
+        authority = new AuthorityEngine(identity);
         state = new StateModel(audit, registry, identity);
         const protocol = new ProtocolEngine(state);
 
         identity.register({
             id: 'user',
             publicKey: userKeys.publicKey,
-            type: 'INDIVIDUAL',
-            scopeOf: new CapabilitySet(['*']),
-            parents: [],
+            type: 'ACTOR',
+            identityProof: 'SYSTEM_GENESIS',
+            status: 'ACTIVE',
             createdAt: '0:0',
             isRoot: true
         });
 
         registry.register({ id: 'reputation', description: '', type: MetricType.GAUGE });
 
-        kernel = new GovernanceKernel(identity, delegation, state, protocol, audit, registry);
+        kernel = new GovernanceKernel(identity, authority, state, protocol, audit, registry);
         gateway = new GovernanceInterface(kernel, state, audit);
-        app = new SovereignApp(gateway);
+
+        const mockWallet = {} as any;
+        const mockHabit = { checkIn: async () => ({}) } as any;
+        const mockTeam = { syncTeam: async () => ({}) } as any;
+        const mockPerformance = {
+            getScorecard: () => ({ authority: {}, discipline: {} }),
+            getConsole: () => ({ orgHealth: {}, overallVelocity: {}, driftAlert: {} })
+        } as any;
+        const mockIntelligence = { runWhatIf: async () => ({}) } as any;
+
+        app = new SovereignApp(
+            gateway,
+            mockWallet,
+            mockHabit,
+            mockTeam,
+            mockPerformance,
+            mockIntelligence
+        );
     });
 
     test('User Login & Action Execution', async () => {
         // 1. Login
-        app.login('user', userKeys.privateKey);
+        app.login('user', userKeys);
 
         // 2. Perform Action via App -> Gateway -> Kernel
         const result = await app.performAction('act-1', { metricId: 'reputation', value: 100 });
@@ -56,13 +74,13 @@ describe('L7 Sovereign App', () => {
 
         // 3. Check Dashboard Reflection (Audit Trail)
         const dashboard = app.getDashboard();
-        expect(dashboard.metrics['reputation']).toBe(100);
-        expect(dashboard.history.length).toBeGreaterThanOrEqual(1);
-        expect(dashboard.history[0].action).toBe('UPDATE:reputation');
+        expect(dashboard.metrics['reputation'].value).toBe(100);
+        expect((await (gateway as any).getRecentAudits()).length).toBeGreaterThanOrEqual(1);
     });
 
     test('Unauthenticated Action Should Fail', async () => {
+        // App expects login or it throws
         await expect(app.performAction('fail', { metricId: 'reputation', value: 0 }))
-            .rejects.toThrow(/User unauthenticated/);
+            .rejects.toThrow(/App Error: User unauthenticated/);
     });
 });

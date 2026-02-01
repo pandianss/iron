@@ -1,5 +1,5 @@
 
-import type { Protocol } from '../../L4/ProtocolTypes.js';
+import type { Protocol } from '../../../kernel-core/L4/ProtocolTypes.js';
 
 export const ISO27001_AccessControl: Protocol = {
     id: 'ire.spl.iso27001.access.v1',
@@ -22,5 +22,9 @@ export const ISO27001_AccessControl: Protocol = {
             type: "ACTION_SIGNATURE",
             value: "REQUIRED"
         }
-    ]
+    ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: []
 };

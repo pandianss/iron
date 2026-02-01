@@ -1,5 +1,5 @@
 
-import type { Protocol } from '../../../../L4/ProtocolTypes.js';
+import type { Protocol } from '../../../kernel-core/L4/ProtocolTypes.js';
 
 export const Medical_Emergency_Protocol: Protocol = {
     id: 'iron.wallet.continuity.emergency.v1',
@@ -41,5 +41,9 @@ export const Medical_Emergency_Protocol: Protocol = {
             metricId: "audit.log.critical_event",
             mutation: "EMERGENCY_ACCESS_GRANTED"
         }
-    ]
+    ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: []
 };

@@ -1,5 +1,5 @@
 
-import type { Protocol } from '../../L4/ProtocolTypes.js';
+import type { Protocol } from '../../../kernel-core/L4/ProtocolTypes.js';
 
 export const Financial_Spend_Limits: Protocol = {
     id: 'ire.spl.finance.spend.v1',
@@ -18,5 +18,9 @@ export const Financial_Spend_Limits: Protocol = {
             operator: ">",
             value: 0
         }
-    ]
+    ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: []
 };

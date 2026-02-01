@@ -1,10 +1,10 @@
 
 import { describe, test, expect, beforeEach } from '@jest/globals';
-import { ProtocolEngine } from '../../../L4/Protocol.js';
-import { StateModel, MetricRegistry, MetricType } from '../../../L2/State.js';
+import { ProtocolEngine } from '../../../kernel-core/L4/Protocol.js';
+import { StateModel, MetricRegistry, MetricType } from '../../../kernel-core/L2/State.js';
 import { IronPerformanceInterface } from '../Interface.js';
-import { IdentityManager } from '../../../L1/Identity.js';
-import { AuditLog } from '../../../L5/Audit.js';
+import { IdentityManager } from '../../../kernel-core/L1/Identity.js';
+import { AuditLog } from '../../../kernel-core/L5/Audit.js';
 
 describe('Iron Performance: System Lifecycle (MIS)', () => {
     let perf: IronPerformanceInterface;
@@ -30,7 +30,7 @@ describe('Iron Performance: System Lifecycle (MIS)', () => {
         const engine = new ProtocolEngine(state);
         perf = new IronPerformanceInterface(engine, state, identity);
 
-        identity.register({ id: 'user-1', type: 'ACTOR', status: 'ACTIVE', publicKey: 'pub-1', createdAt: '0' });
+        identity.register({ id: 'user-1', type: 'ACTOR', status: 'ACTIVE', publicKey: 'pub-1', identityProof: 'PROOF', createdAt: '0' });
         identity.register({ id: 'system', type: 'SYSTEM', status: 'ACTIVE', publicKey: 'sys-pub', createdAt: '0', isRoot: true } as any);
     });
 
@@ -39,8 +39,9 @@ describe('Iron Performance: System Lifecycle (MIS)', () => {
         await perf.initializePerformance();
 
         // 2. Set Seed State
-        state.applyTrusted({ metricId: 'habit.journal.streak', value: 42 }, Date.now().toString());
-        state.applyTrusted({ metricId: 'user.gamification.xp', value: 500 }, Date.now().toString());
+        const ev = 'genesis-ev';
+        await state.applyTrusted([{ metricId: 'habit.journal.streak', value: 42 }], Date.now().toString(), 'system', 'tx0', ev);
+        await state.applyTrusted([{ metricId: 'user.gamification.xp', value: 500 }], Date.now().toString(), 'system', 'tx1', ev);
 
         // 3. User Perspective (L1)
         const scorecard = perf.getScorecard('user-1');
@@ -54,9 +55,9 @@ describe('Iron Performance: System Lifecycle (MIS)', () => {
         expect(consoleView.driftAlert).toBe('NOMINAL');
 
         // 5. Simulate Drift Warning
-        state.applyTrusted({ metricId: 'org.kpi.variance', value: 20 }, (Date.now() + 1000).toString());
+        await state.applyTrusted([{ metricId: 'org.kpi.variance', value: 20 }], (Date.now() + 1000).toString(), 'system', 'tx2', ev);
         // In real engine, L4 would trigger Alert. In test, we simulate the L4 outcome:
-        state.applyTrusted({ metricId: 'org.console.alert_status', value: 'CRITICAL_DRIFT' }, (Date.now() + 1000).toString());
+        await state.applyTrusted([{ metricId: 'org.console.alert_status', value: 'CRITICAL_DRIFT' }], (Date.now() + 1000).toString(), 'system', 'tx3', ev);
 
         expect(perf.getConsole().driftAlert).toBe('CRITICAL_DRIFT');
     });

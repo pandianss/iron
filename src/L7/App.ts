@@ -1,5 +1,5 @@
 import { GovernanceInterface, ActionBuilder } from '../L6/Interface.js';
-import type { KeyPair } from '../L0/Crypto.js';
+import type { KeyPair } from '../kernel-core/L0/Crypto.js';
 import { IronWalletInterface } from '../Solutions/IronWallet/Interface.js';
 import { IronHabitInterface } from '../Solutions/IronHabit/Interface.js';
 import { IronTeamInterface } from '../Solutions/IronTeam/Interface.js';
@@ -65,7 +65,7 @@ export class SovereignApp {
             .build(this.session.keyPair);
 
         // Execute via Interface (L6)
-        const commit = this.gateway.submit(action);
+        const commit = await this.gateway.submit(action);
 
         return {
             actionId,

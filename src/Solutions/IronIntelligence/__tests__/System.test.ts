@@ -1,10 +1,10 @@
 
 import { describe, test, expect, beforeEach } from '@jest/globals';
-import { ProtocolEngine } from '../../../L4/Protocol.js';
-import { StateModel, MetricRegistry, MetricType } from '../../../L2/State.js';
+import { ProtocolEngine } from '../../../kernel-core/L4/Protocol.js';
+import { StateModel, MetricRegistry, MetricType } from '../../../kernel-core/L2/State.js';
 import { IronIntelligenceInterface } from '../Interface.js';
-import { IdentityManager } from '../../../L1/Identity.js';
-import { AuditLog } from '../../../L5/Audit.js';
+import { IdentityManager } from '../../../kernel-core/L1/Identity.js';
+import { AuditLog } from '../../../kernel-core/L5/Audit.js';
 
 describe('Iron Intelligence: System Lifecycle (Evolution)', () => {
     let intel: IronIntelligenceInterface;
@@ -43,19 +43,20 @@ describe('Iron Intelligence: System Lifecycle (Evolution)', () => {
         await intel.verifyStrategy(95, 'GOVERNANCE_SIGNATURE');
 
         // Simulate L4 Protocol Output in the test
-        state.applyTrusted({ metricId: 'org.strategy.verified_scenarios', value: 1 }, (Date.now() + 1000).toString());
-        state.applyTrusted({ metricId: 'user.gamification.xp', value: 25 }, (Date.now() + 1000).toString());
+        const ev = 'genesis-ev';
+        await state.applyTrusted([{ metricId: 'org.strategy.verified_scenarios', value: 1 }], (Date.now() + 1000).toString(), 'system', 'tx0', ev);
+        await state.applyTrusted([{ metricId: 'user.gamification.xp', value: 25 }], (Date.now() + 1000).toString(), 'system', 'tx1', ev);
 
         expect(state.get('org.strategy.verified_scenarios')).toBe(1);
         expect(state.get('user.gamification.xp')).toBe(25);
 
         // 4. Trigger Evolution (Performance Trigger)
-        state.applyTrusted({ metricId: 'org.kpi.total_velocity', value: 150 }, (Date.now() + 2000).toString());
+        await state.applyTrusted([{ metricId: 'org.kpi.total_velocity', value: 150 }], (Date.now() + 2000).toString(), 'system', 'tx2', ev);
 
         await intel.proposeEvolution('Optimize Streak Threshold', 'GOVERNANCE_SIGNATURE');
 
         // Simulate L4 outcome for evolution proposal
-        state.applyTrusted({ metricId: 'org.strategy.evolution_proposals', value: 1 }, (Date.now() + 3000).toString());
+        await state.applyTrusted([{ metricId: 'org.strategy.evolution_proposals', value: 1 }], (Date.now() + 3000).toString(), 'system', 'tx3', ev);
         expect(state.get('org.strategy.evolution_proposals')).toBe(1);
     });
 });

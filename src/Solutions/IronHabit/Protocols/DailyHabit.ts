@@ -1,5 +1,5 @@
 
-import type { Protocol } from '../../../../L4/ProtocolTypes.js';
+import type { Protocol } from '../../../kernel-core/L4/ProtocolTypes.js';
 
 export const Daily_Journal_Protocol: Protocol = {
     id: 'iron.habit.journal.v1',
@@ -40,7 +40,11 @@ export const Daily_Journal_Protocol: Protocol = {
             metricId: "user.gamification.xp",
             mutation: 10
         }
-    ]
+    ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: []
 };
 
 export const Rest_Day_Protocol: Protocol = {
@@ -72,5 +76,9 @@ export const Rest_Day_Protocol: Protocol = {
             mutation: 0 // Maintains streak (Action: SKIP)
             // Ideally, we'd "Extend" the deadline, but for simple counter, +0 implies specific logic or just NO-OP on streak reset
         }
-    ]
+    ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: []
 };

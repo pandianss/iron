@@ -1,5 +1,5 @@
 
-import type { Protocol } from '../../../../L4/ProtocolTypes.js';
+import type { Protocol } from '../../../kernel-core/L4/ProtocolTypes.js';
 
 /**
  * Iron Team: Role Delegation Protocol
@@ -38,7 +38,11 @@ export const Role_Delegation_Protocol: Protocol = {
             metricId: "org.team.health",
             mutation: 100 // Reset/Init health for new role node
         }
-    ]
+    ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: []
 };
 
 /**
@@ -73,5 +77,9 @@ export const Team_Sync_Protocol: Protocol = {
             metricId: "org.team.activity_index",
             mutation: 1
         }
-    ]
+    ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: []
 };

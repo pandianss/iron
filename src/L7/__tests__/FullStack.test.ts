@@ -2,7 +2,7 @@
 import { describe, test, expect, beforeEach } from '@jest/globals';
 import { GovernanceInterface } from '../../L6/Interface.js';
 import { SovereignApp } from '../App.js';
-import { generateKeyPair } from '../../L0/Crypto.js';
+import { generateKeyPair } from '../../kernel-core/L0/Crypto.js';
 
 // Mocks for Solutions
 const mockWallet = { initializeWallet: async () => { } } as any;
@@ -32,7 +32,7 @@ describe('Sovereign App: Integrated Frontend Layer', () => {
     beforeEach(() => {
         mockGateway = {
             getTruth: (m: string) => (m === 'standing' ? 'SOVEREIGN' : 100),
-            submit: () => ({ attemptId: 'tx1', timestamp: '0:0', status: 'ACCEPTED' })
+            submit: async () => ({ attemptId: 'tx1', timestamp: '0:0', status: 'ACCEPTED' })
         };
 
         app = new SovereignApp(

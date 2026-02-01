@@ -1,7 +1,7 @@
 
 import { describe, test, expect, beforeEach } from '@jest/globals';
-import { ProtocolEngine } from '../../../L4/Protocol.js';
-import { StateModel } from '../../../L2/State.js';
+import { ProtocolEngine } from '../../../kernel-core/L4/Protocol.js';
+import { StateModel } from '../../../kernel-core/L2/State.js';
 import { Sovereign_Silence_Protocol, Sovereign_Silence_Escalation } from '../Protocols/SovereignSilence.js';
 import { Medical_Emergency_Protocol } from '../Protocols/MedicalEmergency.js';
 

@@ -1,7 +1,7 @@
 
-import { ProtocolEngine } from '../../L4/Protocol.js';
-import { StateModel } from '../../L2/State.js';
-import { IdentityManager, AuthorityEngine } from '../../L1/Identity.js';
+import { ProtocolEngine } from '../../kernel-core/L4/Protocol.js';
+import { StateModel } from '../../kernel-core/L2/State.js';
+import { IdentityManager, AuthorityEngine } from '../../kernel-core/L1/Identity.js';
 import { Role_Delegation_Protocol, Team_Sync_Protocol } from './Protocols/RoleDelegation.js';
 
 export interface RoleConfig {
@@ -64,7 +64,7 @@ export class IronTeamInterface {
 
         // 2. Institutional Protocol (L4)
         // We log the issuance in the state for tracking statistics
-        this.state.apply({
+        await this.state.apply({
             actionId: `role.issue.${config.id}`,
             initiator: granterId,
             payload: {
@@ -73,8 +73,9 @@ export class IronTeamInterface {
                 protocolId: Role_Delegation_Protocol.id
             },
             timestamp: Date.now().toString(),
+            expiresAt: '0',
             signature: signature
-        } as any);
+        });
     }
 
     /**
@@ -85,7 +86,7 @@ export class IronTeamInterface {
         // Validate that memberId actually holds the roleId?
         // In a real system, the Protocol (L4) or Guard (L0) would check this.
 
-        this.state.apply({
+        await this.state.apply({
             actionId: `role.sync.${roleId}.${Date.now()}`,
             initiator: memberId,
             payload: {
@@ -94,8 +95,9 @@ export class IronTeamInterface {
                 protocolId: Team_Sync_Protocol.id
             },
             timestamp: Date.now().toString(),
+            expiresAt: '0',
             signature: signature
-        } as any);
+        });
     }
 
     /**

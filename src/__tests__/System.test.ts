@@ -1,15 +1,15 @@
-import { DeterministicTime, Budget } from '../L0/Kernel.js';
-import { BudgetType } from '../L0/Kernel.js';
-import { generateKeyPair } from '../L0/Crypto.js';
-import type { KeyPair } from '../L0/Crypto.js';
-import { IdentityManager, AuthorityEngine } from '../L1/Identity.js';
-import type { Entity } from '../L1/Identity.js';
-import { StateModel, MetricRegistry, MetricType } from '../L2/State.js';
-import { ActionFactory } from '../L2/ActionFactory.js';
-import { ProtocolEngine } from '../L4/Protocol.js';
-import type { Protocol } from '../L4/Protocol.js';
-import { AuditLog } from '../L5/Audit.js';
-import { GovernanceKernel } from '../Kernel.js';
+import { DeterministicTime, Budget } from '../kernel-core/L0/Kernel.js';
+import { BudgetType } from '../kernel-core/L0/Kernel.js';
+import { generateKeyPair } from '../kernel-core/L0/Crypto.js';
+import type { KeyPair } from '../kernel-core/L0/Crypto.js';
+import { IdentityManager, AuthorityEngine } from '../kernel-core/L1/Identity.js';
+import type { Entity } from '../kernel-core/L1/Identity.js';
+import { StateModel, MetricRegistry, MetricType } from '../kernel-core/L2/State.js';
+import { ActionFactory } from '../kernel-core/L2/ActionFactory.js';
+import { ProtocolEngine } from '../kernel-core/L4/Protocol.js';
+import type { Protocol } from '../kernel-core/L4/Protocol.js';
+import { AuditLog } from '../kernel-core/L5/Audit.js';
+import { GovernanceKernel } from '../kernel-core/Kernel.js';
 
 describe('Iron Operationalization (Kernel & Guards)', () => {
     // Core
@@ -56,31 +56,32 @@ describe('Iron Operationalization (Kernel & Guards)', () => {
     });
 
 
-    test('Atomic Execution Flow: Attempt -> Guard -> Execute -> Outcome', () => {
+    test('Atomic Execution Flow: Attempt -> Guard -> Execute -> Outcome', async () => {
         const action = ActionFactory.create('load', 50, 'admin', adminKeys.privateKey);
 
-        const receipt = kernel.execute(action);
+        const receipt = await kernel.execute(action);
         expect(receipt.status).toBe('COMMITTED');
 
-        // Verify L5 Log: Should have ATTEMPT and SUCCESS (from State)
-        const history = auditLog.getHistory();
-        expect(history.length).toBeGreaterThanOrEqual(2);
+        // Verify L5 Log: Should have ATTEMPT, ACCEPTED, and SUCCESS (from State)
+        const history = await auditLog.getHistory();
+        expect(history.length).toBeGreaterThanOrEqual(3);
         expect(history[0]!.status).toBe('ATTEMPT');
-        expect(history[1]!.status).toBe('SUCCESS');
+        expect(history[1]!.status).toBe('ACCEPTED');
+        expect(history[2]!.status).toBe('SUCCESS');
 
         expect((state as any).currentState.metrics['load'].value).toBe(50);
     });
 
-    test('Guard Rejection: Invalid Signature', () => {
+    test('Guard Rejection: Invalid Signature', async () => {
         const action = ActionFactory.create('load', 50, 'admin', adminKeys.privateKey);
         action.signature = 'bad';
 
-        expect(() => kernel.execute(action)).toThrow(/Kernel Reject:/);
+        await expect(kernel.execute(action)).rejects.toThrow(/Kernel Reject:/);
 
-        expect(auditLog.getHistory().length).toBe(2);
+        expect((await auditLog.getHistory()).length).toBe(2);
     });
 
-    test('Guard Rejection: Authority Violation (Lacks Jurisdiction)', () => {
+    test('Guard Rejection: Authority Violation (Lacks Jurisdiction)', async () => {
         const userKeys = generateKeyPair();
         identity.register({
             id: 'user',
@@ -94,10 +95,10 @@ describe('Iron Operationalization (Kernel & Guards)', () => {
         // user has NO authority yet
         const action = ActionFactory.create('load', 50, 'user', userKeys.privateKey);
 
-        expect(() => kernel.execute(action)).toThrow(/Authority Violation/);
+        await expect(kernel.execute(action)).rejects.toThrow(/Authority Violation/);
     });
 
-    test('Protocol Conflict Rejection', () => {
+    test('Protocol Conflict Rejection', async () => {
         // Register P1: Controls 'fan'
         const p1: Protocol = {
             id: 'fan-control-1',
@@ -140,9 +141,7 @@ describe('Iron Operationalization (Kernel & Guards)', () => {
         const action = ActionFactory.create('load', 90, 'admin', adminKeys.privateKey);
 
         // Execute via Kernel (Commit phase will trigger protocols and fail on conflict)
-        expect(() => {
-            kernel.execute(action);
-        }).toThrow(/Protocol Conflict/);
+        await expect(kernel.execute(action)).rejects.toThrow(/Protocol Conflict/);
     });
 });
 

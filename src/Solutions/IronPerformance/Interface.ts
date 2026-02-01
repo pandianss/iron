@@ -1,7 +1,7 @@
 
-import { ProtocolEngine } from '../../L4/Protocol.js';
-import { StateModel } from '../../L2/State.js';
-import { IdentityManager } from '../../L1/Identity.js';
+import { ProtocolEngine } from '../../kernel-core/L4/Protocol.js';
+import { StateModel } from '../../kernel-core/L2/State.js';
+import { IdentityManager } from '../../kernel-core/L1/Identity.js';
 import { KPI_Aggregation_Protocol, Drift_Detection_Protocol } from './Protocols/KpiTracking.js';
 
 export class IronPerformanceInterface {
@@ -58,7 +58,7 @@ export class IronPerformanceInterface {
      */
     async refreshKpis(signature: string) {
         // This would call the L4 Protocol logic to rollup metrics
-        this.state.apply({
+        await this.state.apply({
             actionId: `perf.refresh.${Date.now()}`,
             initiator: 'system',
             payload: {
@@ -67,7 +67,8 @@ export class IronPerformanceInterface {
                 protocolId: KPI_Aggregation_Protocol.id
             },
             timestamp: Date.now().toString(),
+            expiresAt: '0',
             signature: signature
-        } as any);
+        });
     }
 }

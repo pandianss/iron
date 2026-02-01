@@ -157,7 +157,7 @@ export class GovernanceKernel {
         // 1. Static Invariant Check
         let check = this.guards.evaluate('INVARIANT', { action: attempt.action, manager: this.identity });
         if (!check.ok) {
-            const violation = check.violation!;
+            const violation = (check as any).violation!;
             const match = /\[(.*?)\] (.*)/.exec(violation);
             const code = match ? match[1] : 'INVARIANT_VIOLATION';
             const message = (match && match[2]) ? match[2] : violation;
@@ -170,9 +170,9 @@ export class GovernanceKernel {
         const sigResult = this.guards.evaluate('SIGNATURE', { intent: attempt.action, manager: this.identity });
         if (!sigResult.ok) {
             const rejection: Rejection = {
-                code: sigResult.code || ErrorCode.SIGNATURE_INVALID,
+                code: (sigResult as any).code || ErrorCode.SIGNATURE_INVALID,
                 invariantId: 'INV-ID-01',
-                message: sigResult.violation || "Invalid Signature"
+                message: (sigResult as any).violation || "Invalid Signature"
             };
             await this.reject(attempt, rejection);
             return { status: 'REJECTED', reason: rejection.message || "Invalid Signature" };
@@ -191,9 +191,9 @@ export class GovernanceKernel {
 
         if (!scopeResult.ok) {
             const rejection: Rejection = {
-                code: scopeResult.code || ErrorCode.OVERSCOPE_ATTEMPT,
+                code: (scopeResult as any).code || ErrorCode.OVERSCOPE_ATTEMPT,
                 invariantId: 'INV-AUTH-01',
-                message: scopeResult.violation || "Scope Violation"
+                message: (scopeResult as any).violation || "Scope Violation"
             };
             await this.reject(attempt, rejection);
             return { status: 'REJECTED', reason: rejection.message || "Scope Violation" };
@@ -203,9 +203,9 @@ export class GovernanceKernel {
         const replayResult = this.guards.evaluate('REPLAY', { actionId: attempt.id, seen: this.seenActions });
         if (!replayResult.ok) {
             const rejection: Rejection = {
-                code: replayResult.code || ErrorCode.REPLAY_DETECTED,
+                code: (replayResult as any).code || ErrorCode.REPLAY_DETECTED,
                 invariantId: 'INV-SEC-01',
-                message: replayResult.violation || "Replay Detected"
+                message: (replayResult as any).violation || "Replay Detected"
             };
             await this.reject(attempt, rejection);
             return { status: 'REJECTED', reason: rejection.message || "Replay Detected" };
@@ -245,7 +245,7 @@ export class GovernanceKernel {
 
         // Article VII: Fiscal Law - Budget is equivalent to Physics
         const budResult = BudgetGuard({ budget, cost: attempt.cost });
-        if (!budResult.ok) throw new Error(`Kernel Reject: Budget Violation(${budResult.violation})`);
+        if (!budResult.ok) throw new Error(`Kernel Reject: Budget Violation(${(budResult as any).violation})`);
 
         try {
             // 1. Protocol Execution

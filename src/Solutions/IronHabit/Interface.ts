@@ -1,7 +1,7 @@
 
-import { ProtocolEngine } from '../../L4/Protocol.js';
-import { StateModel } from '../../L2/State.js';
-import { IdentityManager } from '../../L1/Identity.js';
+import { ProtocolEngine } from '../../kernel-core/L4/Protocol.js';
+import { StateModel } from '../../kernel-core/L2/State.js';
+import { IdentityManager } from '../../kernel-core/L1/Identity.js';
 import { Daily_Journal_Protocol, Rest_Day_Protocol } from './Protocols/DailyHabit.js';
 
 export class IronHabitInterface {
@@ -49,10 +49,11 @@ export class IronHabitInterface {
                 protocolId: Daily_Journal_Protocol.id // Bind to Protocol
             },
             timestamp: Date.now().toString(),
+            expiresAt: '0',
             signature: 'sig-' + proof
         };
 
-        this.state.apply(intent as any);
+        await this.state.apply(intent as any);
 
         // Note: The 'Execution' part of L4 (mutating streak +1) happens 
         // IF the L4 Engine is hooked into `state.apply()`.
@@ -81,7 +82,8 @@ export class IronHabitInterface {
                 protocolId: Rest_Day_Protocol.id
             },
             timestamp: Date.now().toString(),
+            expiresAt: '0',
             signature: 'skip-sig'
-        } as any);
+        });
     }
 }

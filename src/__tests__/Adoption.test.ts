@@ -1,14 +1,14 @@
-import { LogicalTimestamp } from '../L0/Kernel.js';
-import { generateKeyPair, signData, hash } from '../L0/Crypto.js';
-import type { KeyPair } from '../L0/Crypto.js';
-import { IdentityManager, AuthorityEngine } from '../L1/Identity.js';
-import { StateModel, MetricRegistry, MetricType } from '../L2/State.js';
-import { ProtocolEngine } from '../L4/Protocol.js';
-import type { ProtocolBundle, Protocol } from '../L4/Protocol.js';
-import { AuditLog } from '../L5/Audit.js';
-import { ActionFactory } from '../L2/ActionFactory.js';
-import { GovernanceKernel } from '../Kernel.js';
-import { DeterministicTime } from '../L0/Kernel.js';
+import { LogicalTimestamp } from '../kernel-core/L0/Kernel.js';
+import { generateKeyPair, signData, hash } from '../kernel-core/L0/Crypto.js';
+import type { KeyPair } from '../kernel-core/L0/Crypto.js';
+import { IdentityManager, AuthorityEngine } from '../kernel-core/L1/Identity.js';
+import { StateModel, MetricRegistry, MetricType } from '../kernel-core/L2/State.js';
+import { ProtocolEngine } from '../kernel-core/L4/Protocol.js';
+import type { ProtocolBundle, Protocol } from '../kernel-core/L4/Protocol.js';
+import { AuditLog } from '../kernel-core/L5/Audit.js';
+import { ActionFactory } from '../kernel-core/L2/ActionFactory.js';
+import { GovernanceKernel } from '../kernel-core/Kernel.js';
+import { DeterministicTime } from '../kernel-core/L0/Kernel.js';
 
 describe('Iron Canonical Protocol Bundles', () => {
     let identity: IdentityManager;
@@ -73,7 +73,7 @@ describe('Iron Canonical Protocol Bundles', () => {
         } as ProtocolBundle;
     }
 
-    test('Rule 1 & 2: Load Valid Signed Bundle', () => {
+    test('Rule 1 & 2: Load Valid Signed Bundle', async () => {
         const p1: Protocol = {
             id: 'DailyRecovery',
             name: 'DailyRecovery',
@@ -103,7 +103,7 @@ describe('Iron Canonical Protocol Bundles', () => {
 
         // Verify Outcome via Kernel
         const action = ActionFactory.create('stress', 90, 'self', adminKeys.privateKey, '1000:0');
-        kernel.execute(action);
+        await kernel.execute(action);
 
         expect(state.get('recovery')).toBe(10);
     });

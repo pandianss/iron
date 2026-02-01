@@ -237,6 +237,9 @@ export class ProtocolEngine {
                 if (!pre.metricId || pre.value === undefined) continue;
 
                 let currentVal = this.state.get(pre.metricId);
+                if (proposed && proposed.metricId === pre.metricId) {
+                    currentVal = proposed.value;
+                }
                 const current = Number(currentVal !== undefined ? currentVal : 0);
                 const thresh = Number(pre.value);
 

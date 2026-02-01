@@ -13,6 +13,10 @@ export const SecurityProtocol: Protocol = {
             type: "ALLOW_ACTION"
         }
     ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: [],
     preconditions: [
         {
             type: "ACTION_SIGNATURE",

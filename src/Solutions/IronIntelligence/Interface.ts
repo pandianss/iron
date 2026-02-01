@@ -1,9 +1,9 @@
 
-import { ProtocolEngine } from '../../L4/Protocol.js';
-import { StateModel, MetricRegistry } from '../../L2/State.js';
-import { IdentityManager } from '../../L1/Identity.js';
-import { SimulationEngine } from '../../L3/Simulation.js';
-import type { SimAction } from '../../L3/Simulation.js';
+import { ProtocolEngine } from '../../kernel-core/L4/Protocol.js';
+import { StateModel, MetricRegistry } from '../../kernel-core/L2/State.js';
+import { IdentityManager } from '../../kernel-core/L1/Identity.js';
+import { SimulationEngine } from '../../kernel-core/L3/Simulation.js';
+import type { SimAction } from '../../kernel-core/L3/Simulation.js';
 import { Simulation_Verification_Protocol, Adaptive_Evolution_Protocol } from './Protocols/Evolution.js';
 
 export class IronIntelligenceInterface {
@@ -47,7 +47,7 @@ export class IronIntelligenceInterface {
      * Legitimizes a strategy for institutional review.
      */
     async verifyStrategy(fidelityScore: number, signature: string) {
-        this.state.apply({
+        await this.state.apply({
             actionId: `str.verify.${Date.now()}`,
             initiator: 'system',
             payload: {
@@ -56,8 +56,9 @@ export class IronIntelligenceInterface {
                 protocolId: Simulation_Verification_Protocol.id
             },
             timestamp: Date.now().toString(),
+            expiresAt: '0',
             signature: signature
-        } as any);
+        });
     }
 
     /**
@@ -65,7 +66,7 @@ export class IronIntelligenceInterface {
      * Based on performance data, suggest a parameter change.
      */
     async proposeEvolution(details: string, signature: string) {
-        this.state.apply({
+        await this.state.apply({
             actionId: `str.evo.${Date.now()}`,
             initiator: 'system',
             payload: {
@@ -74,7 +75,8 @@ export class IronIntelligenceInterface {
                 protocolId: Adaptive_Evolution_Protocol.id
             },
             timestamp: Date.now().toString(),
+            expiresAt: '0',
             signature: signature
-        } as any);
+        });
     }
 }

@@ -15,6 +15,10 @@ export const BudgetProtocol: Protocol = {
             mutation: -1 // Each "Spend Action" costs 1 unit (simplified)
         }
     ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: [],
     preconditions: [
         {
             type: "METRIC_THRESHOLD",

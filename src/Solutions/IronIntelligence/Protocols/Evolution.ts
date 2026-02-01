@@ -1,5 +1,5 @@
 
-import type { Protocol } from '../../../../L4/ProtocolTypes.js';
+import type { Protocol } from '../../../kernel-core/L4/ProtocolTypes.js';
 
 /**
  * Iron Intelligence: Simulation Verification Protocol
@@ -33,7 +33,11 @@ export const Simulation_Verification_Protocol: Protocol = {
             metricId: "user.gamification.xp",
             mutation: 25 // High reward for strategic modeling
         }
-    ]
+    ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: []
 };
 
 /**
@@ -63,5 +67,9 @@ export const Adaptive_Evolution_Protocol: Protocol = {
             metricId: "org.strategy.evolution_proposals",
             mutation: 1
         }
-    ]
+    ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: []
 };

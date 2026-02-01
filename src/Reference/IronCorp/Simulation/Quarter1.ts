@@ -1,14 +1,15 @@
 
-import { GovernanceKernel } from '../../../Kernel.js';
-import { IdentityManager, AuthorityEngine } from '../../../L1/Identity.js';
-import { StateModel, MetricRegistry, MetricType } from '../../../L2/State.js';
-import { ProtocolEngine } from '../../../L4/Protocol.js';
-import { AuditLog } from '../../../L5/Audit.js';
+import { GovernanceKernel } from '../../../kernel-core/Kernel.js';
+import { IdentityManager, AuthorityEngine } from '../../../kernel-core/L1/Identity.js';
+import { StateModel, MetricRegistry, MetricType } from '../../../kernel-core/L2/State.js';
+import { ProtocolEngine } from '../../../kernel-core/L4/Protocol.js';
+import { AuditLog } from '../../../kernel-core/L5/Audit.js';
 import { IronCorpIdentities, IronCorpOrgChar } from '../Seed.js';
 import { BudgetProtocol } from '../Protocols/Budget.js';
 import { SecurityProtocol } from '../Protocols/Security.js';
 import * as ed from '@noble/ed25519';
-import { LogicalTimestamp, Budget, BudgetType } from '../../../L0/Kernel.js';
+import { LogicalTimestamp, Budget, BudgetType } from '../../../kernel-core/L0/Kernel.js';
+import { signData, canonicalize, randomNonce } from '../../../kernel-core/L0/Crypto.js';
 
 // Setup Helper
 async function setupIronCorp() {
@@ -48,23 +49,13 @@ async function setupIronCorp() {
 
     // 5. Initial State
     // CEO sets Budget to 100
-    // We need to construct a valid signed action.
-    const setBudgetAction = createAction(
-        IronCorpIdentities.CEO,
-        'finance.opex.remaining',
-        100,
-        'param:init'
-    );
-    // Apply via Kernel (Root bypasses some protocol checks or we rely on 'param:init' being un-governed/system)
-    // Actually, to set the initial value, we might need a trusted call or a protocol that allows 'INIT'.
     // For simplicity, we use `state.applyTrusted` to "Seed" the ledger, simulating a prior quarter carry-over.
-    state.applyTrusted({ metricId: 'finance.opex.remaining', value: 100 }, '0:1', 'iron.system');
-    state.applyTrusted({ metricId: 'security.defcon', value: 3 }, '0:1', 'iron.system');
+    const ev = 'genesis-ev';
+    await state.applyTrusted([{ metricId: 'finance.opex.remaining', value: 100 }], '0:1', 'iron.system', 'tx-init-1', ev);
+    await state.applyTrusted([{ metricId: 'security.defcon', value: 3 }], '0:1', 'iron.system', 'tx-init-2', ev);
 
     return { kernel, state, audit };
 }
-
-import { signData, canonicalize, randomNonce } from '../../../L0/Crypto.js';
 
 function createAction(identity: { priv: Uint8Array, pub: string }, metricId: string, value: any, protocolId: string = 'iron.protocol.budget.v1') {
     const ts = Date.now().toString();
@@ -97,7 +88,7 @@ export async function run() {
     const spendAction = createAction(IronCorpIdentities.CFO, 'finance.opex.remaining', 90, BudgetProtocol.id!);
 
     try {
-        kernel.execute(spendAction);
+        await kernel.execute(spendAction);
         console.log("SUCCESS: Budget Decremented via Protocol.");
     } catch (e: any) {
         console.error("FAIL:", e.message);
@@ -113,7 +104,7 @@ export async function run() {
         const current = state.get('finance.opex.remaining') || 0;
         const a = createAction(IronCorpIdentities.CFO, 'finance.opex.remaining', current - 1, BudgetProtocol.id!);
         try {
-            kernel.execute(a);
+            await kernel.execute(a);
         } catch (e) {
             // Should not fail in this loop as we only go up to remain
         }
@@ -122,7 +113,7 @@ export async function run() {
     // Attempt one more (should fail)
     const final = createAction(IronCorpIdentities.CFO, 'finance.opex.remaining', -1, BudgetProtocol.id!);
     try {
-        kernel.execute(final);
+        await kernel.execute(final);
     } catch (e) {
         console.log("SUCCESS: Attempt beyond zero blocked by protocol.");
     }

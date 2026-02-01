@@ -27,7 +27,7 @@ export interface RiskProbability {
 export class MonteCarloEngine {
     constructor(private simEngine: SimulationEngine) { }
 
-    public simulate(
+    public async simulate(
         currentState: StateModel,
         action: SimAction | null,
         horizon: number,
@@ -36,7 +36,7 @@ export class MonteCarloEngine {
         failureCondition?: (value: number) => boolean,
         targetMetricId?: string,
         extraProtocols?: Protocol[] // New: Protocols to vet
-    ): RiskProbability {
+    ): Promise<RiskProbability> {
         const results: number[] = [];
         const targetId = targetMetricId || (action ? action.targetMetricId : "system.load");
 
@@ -46,12 +46,12 @@ export class MonteCarloEngine {
                 // Perturb action value: value * (1 + (rand - 0.5) * volatility)
                 const noise = (Math.random() - 0.5) * 2 * volatility;
                 const noisyAction: SimAction = { ...action, valueMutation: action.valueMutation * (1 + noise) };
-                const forecast = this.simEngine.run(currentState, noisyAction, horizon, extraProtocols);
+                const forecast = await this.simEngine.run(currentState, noisyAction, horizon, extraProtocols);
                 resultVal = forecast ? forecast.predictedValue : 0;
             } else {
                 // To simulate market noise, we must pass a dummy action to force SimulationEngine to look at targetId
                 const dummyAction: SimAction = { id: 'noop', description: 'noop', targetMetricId: targetId, valueMutation: 0 };
-                const forecast = this.simEngine.run(currentState, dummyAction, horizon, extraProtocols);
+                const forecast = await this.simEngine.run(currentState, dummyAction, horizon, extraProtocols);
                 const noise = (Math.random() - 0.5) * 2 * volatility;
                 resultVal = forecast ? forecast.predictedValue * (1 + noise) : 0;
             }
@@ -85,12 +85,12 @@ export class MonteCarloEngine {
 export class SimulationEngine {
     constructor(private registry: MetricRegistry, private protocols: ProtocolEngine) { }
 
-    public run(
+    public async run(
         currentState: StateModel,
         action: SimAction | null,
         horizon: number,
         extraProtocols: Protocol[] = []
-    ): Forecast | null {
+    ): Promise<Forecast | null> {
         // 1. Fork Store (Ephemeral)
         const simAudit = new AuditLog();
         const simState = new StateModel(simAudit, this.registry, (currentState as any).identityManager);
@@ -99,9 +99,10 @@ export class SimulationEngine {
         const targetId = action ? action.targetMetricId : "system.load";
         const originalHistory = currentState.getHistory(targetId);
 
-        originalHistory.forEach(h => {
-            simState.applyTrusted({ metricId: targetId, value: h.value }, h.updatedAt, 'sim-baseline');
-        });
+        const ev = 'sim-genesis-ev';
+        for (const h of originalHistory) {
+            await simState.applyTrusted([{ metricId: targetId, value: h.value }], h.updatedAt, 'sim-baseline', 'sim-tx', ev);
+        }
 
         // 3. Apply Action (if any)
         if (action) {
@@ -111,7 +112,7 @@ export class SimulationEngine {
             const lastTimeStr = originalHistory.length > 0 ? originalHistory[originalHistory.length - 1]!.updatedAt : "0:0";
             const time = LogicalTimestamp.fromString(lastTimeStr);
 
-            simState.applyTrusted({ metricId: targetId, value: newVal }, time.toString(), 'sim-action');
+            await simState.applyTrusted([{ metricId: targetId, value: newVal }], time.toString(), 'sim-action', 'sim-tx-act', ev);
 
             // 4. Trigger Protocols (Simulated)
             const simProtocols = new ProtocolEngine(simState);
@@ -132,9 +133,9 @@ export class SimulationEngine {
 
             try {
                 const mutations = simProtocols.evaluate(time);
-                mutations.forEach(m => {
-                    simState.applyTrusted({ metricId: m.metricId, value: m.value }, time.toString(), 'sim-protocol');
-                });
+                for (const m of mutations) {
+                    await simState.applyTrusted([{ metricId: m.metricId, value: m.value }], time.toString(), 'sim-protocol', 'sim-tx-p', ev);
+                }
             } catch (e) {
                 // Silent catch to allow simulation to proceed
             }
@@ -149,14 +150,14 @@ export class SimulationEngine {
 export class HybridStrategyEngine {
     constructor(private simEngine: SimulationEngine) { }
 
-    public compare(
+    public async compare(
         currentState: StateModel,
         action: SimAction,
         horizon: number
-    ): { baseline: Forecast | null, simulated: Forecast | null, delta: number } {
+    ): Promise<{ baseline: Forecast | null, simulated: Forecast | null, delta: number }> {
 
-        const baseline = this.simEngine.run(currentState, null, horizon);
-        const simulated = this.simEngine.run(currentState, action, horizon);
+        const baseline = await this.simEngine.run(currentState, null, horizon);
+        const simulated = await this.simEngine.run(currentState, action, horizon);
 
         let delta = 0;
         if (baseline && simulated) {
@@ -166,5 +167,3 @@ export class HybridStrategyEngine {
         return { baseline, simulated, delta };
     }
 }
-
-

@@ -1,10 +1,10 @@
 
 import { describe, test, expect, beforeEach } from '@jest/globals';
-import { ProtocolEngine } from '../../../L4/Protocol.js';
-import { StateModel, MetricRegistry, MetricType } from '../../../L2/State.js';
+import { ProtocolEngine } from '../../../kernel-core/L4/Protocol.js';
+import { StateModel, MetricRegistry, MetricType } from '../../../kernel-core/L2/State.js';
 import { IronWalletInterface } from '../Interface.js';
-import { IdentityManager } from '../../../L1/Identity.js';
-import { AuditLog } from '../../../L5/Audit.js';
+import { IdentityManager } from '../../../kernel-core/L1/Identity.js';
+import { AuditLog } from '../../../kernel-core/L5/Audit.js';
 
 describe('Iron Wallet: System Lifecycle (Death & Resurrection)', () => {
     let wallet: IronWalletInterface;
@@ -39,20 +39,21 @@ describe('Iron Wallet: System Lifecycle (Death & Resurrection)', () => {
         await wallet.initializeWallet();
 
         // 2. Set Initial State
-        state.applyTrusted({ metricId: 'user.activity.days_since_last_seen', value: 0 }, Date.now().toString());
-        state.applyTrusted({ metricId: 'user.authority.state', value: 'ACTIVE' }, Date.now().toString());
+        const ev = 'genesis-ev';
+        await state.applyTrusted([{ metricId: 'user.activity.days_since_last_seen', value: 0 }], Date.now().toString(), 'system', 'tx0', ev);
+        await state.applyTrusted([{ metricId: 'user.authority.state', value: 'ACTIVE' }], Date.now().toString(), 'system', 'tx1', ev);
 
         // 3. Simulate Time Jump (Sequence of Events)
 
         // Event A: Protocol Logic runs, State moves to WARNING
-        state.applyTrusted({ metricId: 'user.authority.state', value: 'WARNING' }, (Date.now() + 1000).toString());
+        await state.applyTrusted([{ metricId: 'user.authority.state', value: 'WARNING' }], (Date.now() + 1000).toString(), 'system', 'tx2', ev);
 
         // Verify Warning State
         expect(state.get('user.authority.state')).toBe('WARNING');
 
         // Event B: Lazarus Trigger (Simulated Reset)
-        state.applyTrusted({ metricId: 'user.authority.state', value: 'ACTIVE' }, (Date.now() + 2000).toString());
-        state.applyTrusted({ metricId: 'user.activity.days_since_last_seen', value: 0 }, (Date.now() + 2000).toString());
+        await state.applyTrusted([{ metricId: 'user.authority.state', value: 'ACTIVE' }], (Date.now() + 2000).toString(), 'system', 'tx3', ev);
+        await state.applyTrusted([{ metricId: 'user.activity.days_since_last_seen', value: 0 }], (Date.now() + 2000).toString(), 'system', 'tx4', ev);
 
         // Verify L2 State Updated
         expect(state.get('user.activity.days_since_last_seen')).toBe(0);

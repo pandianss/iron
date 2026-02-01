@@ -1,7 +1,7 @@
 
 import express from 'express';
 import cors from 'cors';
-import { GovernanceKernel } from '../../Kernel.js';
+import { GovernanceKernel } from '../../kernel-core/Kernel.js';
 import { GovernanceInterface } from '../../L6/Interface.js';
 
 export class ConsoleServer {
@@ -49,9 +49,9 @@ export class ConsoleServer {
         });
 
         // --- Audit Explorer (XIV.3) ---
-        this.app.get('/api/audit/recent', (req, res) => {
+        this.app.get('/api/audit/recent', async (req, res) => {
             const limit = Number(req.query.limit) || 50;
-            const history = this.iface.getRecentAudits(limit);
+            const history = await this.iface.getRecentAudits(limit);
             res.json({ ok: true, count: history.length, data: history });
         });
 
@@ -63,15 +63,14 @@ export class ConsoleServer {
         });
 
         // --- Violations (XIV.4) ---
-        this.app.get('/api/violations', (req, res) => {
-            const reports = this.iface.getBreachReports();
+        this.app.get('/api/violations', async (req, res) => {
+            const reports = await this.iface.getBreachReports();
             res.json({ ok: true, count: reports.length, data: reports });
         });
 
-        // --- Studio: Validation (XIV.5) ---
         this.app.post('/api/studio/validate', (req, res) => {
             // Lazy load to avoid circular deps if possible, or just import at top
-            const { ProtocolSchema } = require('../../../L4/ProtocolTypes.js');
+            const { ProtocolSchema } = require('../../../kernel-core/L4/ProtocolTypes.js');
             const result = ProtocolSchema.safeParse(req.body);
             if (result.success) {
                 res.json({ ok: true, data: result.data });
@@ -89,7 +88,7 @@ export class ConsoleServer {
                 // 1. We need a Simulation Engine instance.
                 // In a real app, this should be injected or singleton.
                 // We'll instantiate a fresh one using the real Kernel components.
-                const { SimulationEngine } = require('../../../L3/Simulation.js');
+                const { SimulationEngine } = require('../../../kernel-core/L3/Simulation.js');
                 // Kernel has protected properties, but we are inside Platform Trusted Layer.
                 const state = (this.kernel as any).state;
                 const registry = (this.kernel as any).registry;

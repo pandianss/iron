@@ -1,6 +1,6 @@
 // src/L2/ActionFactory.ts
 import type { Action, ActionPayload } from './State.js';
-import { signData, hash } from '../L0/Crypto.js';
+import { signData, hash, canonicalize } from '../L0/Crypto.js';
 import type { Ed25519PrivateKey } from '../L0/Crypto.js';
 
 export class ActionFactory {
@@ -16,7 +16,7 @@ export class ActionFactory {
         const payload: ActionPayload = { protocolId, metricId, value };
 
         // Construct canonical data string for Signing
-        const payloadStr = JSON.stringify(payload);
+        const payloadStr = canonicalize(payload);
 
         // Ensure formal format "time:logical"
         const tsStr = typeof timestamp === 'string' && timestamp.includes(':')

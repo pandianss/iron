@@ -1,7 +1,7 @@
 
-import { ProtocolEngine } from '../../L4/Protocol.js';
-import { StateModel } from '../../L2/State.js';
-import { IdentityManager } from '../../L1/Identity.js';
+import { ProtocolEngine } from '../../kernel-core/L4/Protocol.js';
+import { StateModel } from '../../kernel-core/L2/State.js';
+import { IdentityManager } from '../../kernel-core/L1/Identity.js';
 import { Sovereign_Silence_Protocol, Sovereign_Silence_Escalation } from './Protocols/SovereignSilence.js';
 import { Medical_Emergency_Protocol } from './Protocols/MedicalEmergency.js';
 
@@ -47,25 +47,27 @@ export class IronWalletInterface {
 
         // 2. Telemetry (L2)
         // Update 'last_seen' metric
-        this.state.apply({
+        await this.state.apply({
             actionId: 'sys.lazarus.' + Date.now(),
             initiator: userId,
             payload: { metricId: 'user.activity.days_since_last_seen', value: 0 },
             timestamp: Date.now().toString(),
+            expiresAt: '0',
             signature: signature
-        } as any); // Casting for brevity in sketch
+        }); // Casting for brevity in sketch
 
         // 3. Status Reset (L4)
         // If state was WARNING, finding Proof of Life should reset it in the next Tick
         // This is implicit in the Protocol logic (Preconditions will fail for 'Warning' if days < 30)
         // But we explicitly force state to ACTIVE to be safe/responsive
-        this.state.apply({
+        await this.state.apply({
             actionId: 'sys.reset.' + Date.now(),
             initiator: userId,
             payload: { metricId: 'user.authority.state', value: 'ACTIVE' },
             timestamp: Date.now().toString(),
+            expiresAt: '0',
             signature: signature
-        } as any);
+        });
     }
 
     /**
@@ -74,13 +76,14 @@ export class IronWalletInterface {
     async declareEmergency(nomineeId: string, targetUserId: string) {
         // Sets the request flag.
         // The MedicalEmergency Protocol (L4) will pick this up + Quorum to decide outcome.
-        this.state.apply({
+        await this.state.apply({
             actionId: 'nominee.req.' + Date.now(),
             initiator: nomineeId,
             payload: { metricId: 'access.request.emergency_active', value: true },
             timestamp: Date.now().toString(),
+            expiresAt: '0',
             signature: 'nominee_sig'
-        } as any);
+        });
     }
 
     /**

@@ -1,10 +1,10 @@
 
 import { describe, test, expect, beforeEach } from '@jest/globals';
-import { ProtocolEngine } from '../../../L4/Protocol.js';
-import { StateModel, MetricRegistry, MetricType } from '../../../L2/State.js';
+import { ProtocolEngine } from '../../../kernel-core/L4/Protocol.js';
+import { StateModel, MetricRegistry, MetricType } from '../../../kernel-core/L2/State.js';
 import { IronTeamInterface } from '../Interface.js';
-import { IdentityManager } from '../../../L1/Identity.js';
-import { AuditLog } from '../../../L5/Audit.js';
+import { IdentityManager } from '../../../kernel-core/L1/Identity.js';
+import { AuditLog } from '../../../kernel-core/L5/Audit.js';
 
 describe('Iron Team: System Lifecycle (Coordination)', () => {
     let team: IronTeamInterface;
@@ -51,22 +51,21 @@ describe('Iron Team: System Lifecycle (Coordination)', () => {
         // 3. Verify L1 Delegation
         const map = team.getAuthorityMap();
         expect(map.length).toBe(1);
+        if (!map[0]) throw new Error("Delegation failed");
         expect(map[0].granter).toBe('ceo');
         expect(map[0].grantee).toBe('manager');
         expect(map[0].capacity).toBe('ROLE_HOLDER');
         expect(map[0].jurisdiction).toBe('marketing');
 
         // 4. Verify L2 State (Simulated outcome of apply)
-        // In this mock setup, if we didn't mock verifySignature, apply() might have thrown.
-        // But the previous test in Iron Wallet worked by assuming state.apply(trusted) logic elsewhere.
-        // Actually, let's use applyTrusted in the test to verify metrics logic.
-        state.applyTrusted({ metricId: 'org.roles.active_count', value: 1 }, Date.now().toString());
+        const ev = 'genesis-ev';
+        await state.applyTrusted([{ metricId: 'org.roles.active_count', value: 1 }], Date.now().toString(), 'system', 'tx0', ev);
         expect(state.get('org.roles.active_count')).toBe(1);
 
         // 5. Team Sync
         await team.syncTeam('mgr-1', 'manager', 'GOVERNANCE_SIGNATURE');
 
-        state.applyTrusted({ metricId: 'org.team.activity_index', value: 1 }, (Date.now() + 1000).toString());
+        await state.applyTrusted([{ metricId: 'org.team.activity_index', value: 1 }], (Date.now() + 1000).toString(), 'system', 'tx1', ev);
         expect(state.get('org.team.activity_index')).toBe(1);
     });
 });

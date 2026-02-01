@@ -1,11 +1,10 @@
-import { StateModel } from '../L2/State.js';
-import type { Action, ActionPayload } from '../L2/State.js';
-import { AuditLog } from '../L5/Audit.js';
-import { signData, hash } from '../L0/Crypto.js';
-import type { KeyPair } from '../L0/Crypto.js';
-import { GovernanceKernel } from '../Kernel.js';
-import { Budget, BudgetType } from '../L0/Kernel.js';
-import type { EntityID } from '../L0/Ontology.js';
+import { StateModel } from '../kernel-core/L2/State.js';
+import type { Action, ActionPayload, EntityID } from '../kernel-core/L0/Ontology.js';
+import { AuditLog } from '../kernel-core/L5/Audit.js';
+import { signData, hash } from '../kernel-core/L0/Crypto.js';
+import type { KeyPair } from '../kernel-core/L0/Crypto.js';
+import { GovernanceKernel } from '../kernel-core/Kernel.js';
+import { Budget, BudgetType } from '../kernel-core/L0/Kernel.js';
 
 /**
  * 6. Interface (Constitutional Interface)
@@ -19,8 +18,9 @@ export class GovernanceInterface {
 
     public getTruth(id: string) { return (this.state as any).currentState.metrics[id]; }
 
-    public getAuditTrail(id: string) {
-        return this.log.getHistory()
+    public async getAuditTrail(id: string) {
+        const history = await this.log.getHistory();
+        return history
             .filter(e => e.action.payload.metricId === id)
             .map(e => ({
                 value: e.action.payload.value,
@@ -30,17 +30,18 @@ export class GovernanceInterface {
     }
 
     // The Single Door: All Writes must go through Kernel (Article VII)
-    public submit(action: Action, options: { budgetLimit?: number } = {}) {
+    public async submit(action: Action, options: { budgetLimit?: number } = {}) {
         const budget = new Budget(BudgetType.ENERGY, options.budgetLimit || 100);
-        return this.kernel.execute(action, budget);
+        return await this.kernel.execute(action, budget);
     }
 
     /**
      * Product 2: Governance Breach Monitor
      * Extracts structured violation data from the Audit Log.
      */
-    public getBreachReports() {
-        return this.log.getHistory()
+    public async getBreachReports() {
+        const history = await this.log.getHistory();
+        return history
             .filter(e => e.status === 'REJECT' || e.status === 'ABORTED')
             .map(e => ({
                 actionId: e.action.actionId,
@@ -55,8 +56,8 @@ export class GovernanceInterface {
      * Product 2: Incident Reconstruction
      * Groups related evidence by context (e.g., metric, initiator).
      */
-    public reconstructIncident(actionId: string) {
-        const history = this.log.getHistory();
+    public async reconstructIncident(actionId: string) {
+        const history = await this.log.getHistory();
         const mainEntry = history.find(e => e.action.actionId === actionId);
         if (!mainEntry) return null;
 
@@ -178,15 +179,17 @@ export class GovernanceInterface {
     /**
      * Get breaches by entity
      */
-    public getBreachesByEntity(entityId: EntityID) {
-        return this.getBreachReports().filter(b => b.initiator === entityId);
+    public async getBreachesByEntity(entityId: EntityID) {
+        const reports = await this.getBreachReports();
+        return reports.filter(b => b.initiator === entityId);
     }
 
     /**
      * Get breaches by metric
      */
-    public getBreachesByMetric(metricId: string) {
-        return this.log.getHistory()
+    public async getBreachesByMetric(metricId: string) {
+        const history = await this.log.getHistory();
+        return history
             .filter(e =>
                 (e.status === 'REJECT' || e.status === 'ABORTED') &&
                 e.action.payload.metricId === metricId
@@ -211,8 +214,8 @@ export class GovernanceInterface {
     }
 
     // Returns audit trail for inspection
-    public getRecentAudits(limit: number = 50): any[] {
-        const history = (this.kernel.State as any).auditLog.getHistory();
+    public async getRecentAudits(limit: number = 50): Promise<any[]> {
+        const history = await (this.kernel.state as any).auditLog.getHistory();
         return history.slice(-limit).reverse(); // Newest first
     }
 

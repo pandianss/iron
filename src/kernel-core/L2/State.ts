@@ -1,4 +1,5 @@
 import type { Action, ActionPayload, Mutation, EntityID } from '../L0/Ontology.js';
+export type { Action, ActionPayload, Mutation, EntityID };
 import { produce } from 'immer';
 import { IdentityManager } from '../L1/Identity.js';
 import { verifySignature, hash, hashState, canonicalize } from '../L0/Crypto.js';
@@ -95,8 +96,11 @@ export class StateModel {
                 }
             }
 
-            // 2. Delegate to common application logic
-            await this.applyTrusted(action.payload, action.timestamp, action.initiator, action.actionId);
+            // 2. institucional Ledger entry
+            const evidence = await this.auditLog.append(action, 'SUCCESS');
+
+            // 3. Delegate to common application logic
+            await this.applyTrusted([action.payload], action.timestamp, action.initiator, action.actionId, evidence.evidenceId);
 
         } catch (e: any) {
             console.warn(`State Transition Failed: ${e.message}`);

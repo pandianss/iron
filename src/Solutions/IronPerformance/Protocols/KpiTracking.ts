@@ -1,5 +1,5 @@
 
-import type { Protocol } from '../../../../L4/ProtocolTypes.js';
+import type { Protocol } from '../../../kernel-core/L4/ProtocolTypes.js';
 
 /**
  * Iron Performance: KPI Aggregation Protocol
@@ -29,7 +29,11 @@ export const KPI_Aggregation_Protocol: Protocol = {
             metricId: "org.kpi.total_velocity",
             mutation: 1 // Increment total velocity for every child heartbeat
         }
-    ]
+    ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: []
 };
 
 /**
@@ -59,5 +63,9 @@ export const Drift_Detection_Protocol: Protocol = {
             metricId: "org.console.alert_status",
             mutation: "CRITICAL_DRIFT"
         }
-    ]
+    ],
+    triggerConditions: [],
+    authorizedCapacities: [],
+    stateTransitions: [],
+    completionConditions: []
 };

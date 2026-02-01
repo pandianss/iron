@@ -1,7 +1,8 @@
-
+import { StateModel } from '../kernel-core/L2/State.js';
 import type { Action, ActionPayload } from '../kernel-core/L2/State.js';
-import type { AttemptID } from '../kernel-core/Kernel.js';
+import type { AttemptID, Commit } from '../kernel-core/Kernel.js';
 import { GovernanceKernel } from '../kernel-core/Kernel.js';
+import { Budget } from '../kernel-core/L0/Kernel.js';
 import {
     PlatformError,
     PolicyViolationError,
@@ -42,13 +43,15 @@ export class KernelPlatform {
         private authorityEngine: any,
         private protocols: any,
         private metrics: any,
-        private eventStore?: IEventStore
+        private eventStore?: IEventStore,
+        injectedState?: StateModel
     ) {
         this.audit = new AuditLog(this.eventStore);
+        const state = injectedState || new StateModel(this.audit, this.metrics, this.identityManager);
         this.kernel = new GovernanceKernel(
             this.identityManager,
             this.authorityEngine,
-            repo as any,
+            state,
             this.protocols,
             this.audit,
             this.metrics
@@ -69,23 +72,34 @@ export class KernelPlatform {
         };
 
         try {
-            const entityId = await this.principal.resolve(userId);
-            if (!entityId) throw new Error("UNAUTHORIZED_PRINCIPAL");
-
-            const action: Action = {
-                actionId: cmd.id,
-                initiator: entityId,
-                payload: { metricId: target, value: payload, protocolId: operation },
-                timestamp: this.clock.now(),
-                expiresAt: '0',
-                signature: signature
-            };
-
-            const commit = await this.kernel.execute(action);
-            return { ok: true, commitId: commit.attemptId };
+            return await this.execute(cmd);
         } catch (e) {
             return { ok: false, error: this.translateError(e, cmd) };
         }
+    }
+
+    /**
+     * Standard Execution Entry (Atomic)
+     */
+    public async execute(cmd: Command): Promise<any> {
+        const entityId = await this.principal.resolve(cmd.userId);
+        if (!entityId) throw new Error("UNAUTHORIZED_PRINCIPAL");
+
+        const action: Action = {
+            actionId: cmd.id,
+            initiator: entityId,
+            payload: {
+                metricId: cmd.target,
+                value: cmd.payload,
+                protocolId: cmd.operation || 'SYSTEM'
+            },
+            timestamp: cmd.timestamp || this.clock.now(),
+            expiresAt: '0',
+            signature: cmd.signature
+        };
+
+        const commit = await this.kernel.execute(action, new Budget('ENERGY' as any, 100));
+        return { ok: true, commitId: commit.attemptId };
     }
 
     /**
@@ -108,7 +122,7 @@ export class KernelPlatform {
             const action: Action = {
                 actionId,
                 initiator: entityId,
-                payload: { metricId, value, protocolId },
+                payload: { metricId, value, protocolId: protocolId || 'SYSTEM' },
                 timestamp: this.clock.now(),
                 expiresAt: '0',
                 signature: 'GOVERNANCE_SIGNATURE'

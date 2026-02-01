@@ -1,7 +1,7 @@
 
 import { describe, test, expect, beforeEach } from '@jest/globals';
-import { ProtocolEngine } from '../../../L4/Protocol.js';
-import { StateModel } from '../../../L2/State.js';
+import { ProtocolEngine } from '../../../kernel-core/L4/Protocol.js';
+import { StateModel } from '../../../kernel-core/L2/State.js';
 import { Daily_Journal_Protocol, Rest_Day_Protocol } from '../Protocols/DailyHabit.js';
 
 describe('Iron Habit: Protocols', () => {

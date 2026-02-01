@@ -1,6 +1,6 @@
 
 import * as ed from '@noble/ed25519';
-import type { Entity } from '../../L1/Identity.js';
+import type { Entity } from '../../kernel-core/L1/Identity.js';
 
 // Static random keys for the simulation (normally these would be securely managed)
 // We generate them deterministically for reproducibility if possible, 
