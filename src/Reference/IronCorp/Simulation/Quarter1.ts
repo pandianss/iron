@@ -8,7 +8,8 @@ import { IronCorpIdentities, IronCorpOrgChar } from '../Seed.js';
 import { BudgetProtocol } from '../Protocols/Budget.js';
 import { SecurityProtocol } from '../Protocols/Security.js';
 import * as ed from '@noble/ed25519';
-import { LogicalTimestamp, Budget, BudgetType } from '../../../kernel-core/L0/Kernel.js';
+import { LogicalTimestamp } from '../../../kernel-core/L0/Kernel.js';
+import { Budget, BudgetType } from '../../../kernel-core/L0/Primitives.js';
 import { signData, canonicalize, randomNonce } from '../../../kernel-core/L0/Crypto.js';
 
 // Setup Helper
@@ -22,7 +23,7 @@ async function setupIronCorp() {
     // CEO -> CFO (Budget)
     const now = '0:0';
     // We access authority engine directly for genesis seeding
-    auth.grant('auth.genesis.cfo', 'iron.ceo', 'iron.cfo', 'finance.opex.remaining', '*', now, 'GOVERNANCE_SIGNATURE');
+    auth.grant('auth.genesis.cfo', 'iron.ceo', 'iron.cfo', 'METRIC.WRITE:finance.opex.remaining', '*', now, 'GOVERNANCE_SIGNATURE');
 
     // 3. Metrics
     const registry = new MetricRegistry();
@@ -40,11 +41,11 @@ async function setupIronCorp() {
 
     // 4. Install Protocols
     protos.propose(BudgetProtocol);
-    protos.ratify(BudgetProtocol.id!, 'GENESIS_SIG');
+    protos.ratify(BudgetProtocol.id!, 'GOVERNANCE_SIGNATURE');
     protos.activate(BudgetProtocol.id!);
 
     protos.propose(SecurityProtocol);
-    protos.ratify(SecurityProtocol.id!, 'GENESIS_SIG');
+    protos.ratify(SecurityProtocol.id!, 'GOVERNANCE_SIGNATURE');
     protos.activate(SecurityProtocol.id!);
 
     // 5. Initial State
@@ -92,6 +93,7 @@ export async function run() {
         console.log("SUCCESS: Budget Decremented via Protocol.");
     } catch (e: any) {
         console.error("FAIL:", e.message);
+        throw e; // Fail the test to see trace
     }
 
     console.log("Current Budget:", state.get('finance.opex.remaining')); // Should be 99 (100 - 1)

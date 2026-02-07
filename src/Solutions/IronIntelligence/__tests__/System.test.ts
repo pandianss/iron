@@ -43,20 +43,27 @@ describe('Iron Intelligence: System Lifecycle (Evolution)', () => {
         await intel.verifyStrategy(95, 'GOVERNANCE_SIGNATURE');
 
         // Simulate L4 Protocol Output in the test
+        // Simulate L4 Protocol Output in the test
+        // Simulate L4 Protocol Output in the test
         const ev = 'genesis-ev';
-        await state.applyTrusted([{ metricId: 'org.strategy.verified_scenarios', value: 1 }], (Date.now() + 1000).toString(), 'system', 'tx0', ev);
-        await state.applyTrusted([{ metricId: 'user.gamification.xp', value: 25 }], (Date.now() + 1000).toString(), 'system', 'tx1', ev);
+        const t1 = Date.now();
+        await state.applyTrusted([{ metricId: 'org.strategy.verified_scenarios', value: 1 }], t1 + ':1', 'system', 'tx0', ev);
+        await state.applyTrusted([{ metricId: 'user.gamification.xp', value: 25 }], t1 + ':2', 'system', 'tx1', ev);
 
         expect(state.get('org.strategy.verified_scenarios')).toBe(1);
         expect(state.get('user.gamification.xp')).toBe(25);
 
         // 4. Trigger Evolution (Performance Trigger)
-        await state.applyTrusted([{ metricId: 'org.kpi.total_velocity', value: 150 }], (Date.now() + 2000).toString(), 'system', 'tx2', ev);
+        await state.applyTrusted([{ metricId: 'org.kpi.total_velocity', value: 150 }], t1 + ':3', 'system', 'tx2', ev);
+
+        // Wait for clock to advance to avoid collision with logical ticks
+        await new Promise(r => setTimeout(r, 10));
 
         await intel.proposeEvolution('Optimize Streak Threshold', 'GOVERNANCE_SIGNATURE');
 
         // Simulate L4 outcome for evolution proposal
-        await state.applyTrusted([{ metricId: 'org.strategy.evolution_proposals', value: 1 }], (Date.now() + 3000).toString(), 'system', 'tx3', ev);
+        await new Promise(r => setTimeout(r, 10));
+        await state.applyTrusted([{ metricId: 'org.strategy.evolution_proposals', value: 1 }], Date.now().toString(), 'system', 'tx3', ev);
         expect(state.get('org.strategy.evolution_proposals')).toBe(1);
     });
 });

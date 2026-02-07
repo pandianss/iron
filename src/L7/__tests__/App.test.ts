@@ -42,6 +42,7 @@ describe('L7 Sovereign App', () => {
 
         kernel = new GovernanceKernel(identity, authority, state, protocol, audit, registry);
         gateway = new GovernanceInterface(kernel, state, audit);
+        kernel.boot();
 
         const mockWallet = {} as any;
         const mockHabit = { checkIn: async () => ({}) } as any;

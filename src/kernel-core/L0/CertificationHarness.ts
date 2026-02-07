@@ -151,7 +151,7 @@ export class ActionGenerator {
         return `action-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
 
-    private generateTimestamp(): LogicalTimestamp {
+    private generateTimestamp(): string {
         return `${Date.now()}:${this.randomInt(0, 1000)}`;
     }
 

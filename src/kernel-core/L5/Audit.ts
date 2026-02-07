@@ -1,6 +1,7 @@
 // src/L5/Audit.ts
 import { hash, canonicalize } from '../L0/Crypto.js';
-import type { Action } from '../L0/Ontology.js';
+import type { Action, Evidence } from '../L0/Ontology.js';
+export type { Evidence } from '../L0/Ontology.js';
 
 /**
  * Event Store Port (Internal reference to avoid circular deps if needed, 
@@ -10,17 +11,6 @@ export interface IEventStore {
     append(evidence: Evidence): Promise<void>;
     getHistory(): Promise<Evidence[]>;
     getLatest(): Promise<Evidence | null>;
-}
-
-// --- 12. Evidence (The institutional truth substrate) ---
-export interface Evidence {
-    evidenceId: string; // The identifying hash
-    previousEvidenceId: string; // Chain linkage
-    action: Action; // LinkedAction
-    status: 'SUCCESS' | 'FAILURE' | 'ATTEMPT' | 'REJECT' | 'ABORTED' | 'ACCEPTED';
-    reason?: string;
-    metadata?: Record<string, any>; // Structured diagnostics (Product 2)
-    timestamp: string; // Logical Timestamp: "time:logical"
 }
 
 export class AuditLog {

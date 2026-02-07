@@ -1,11 +1,11 @@
 // src/Chaos/Fuzzer.ts
-import { ActionFactory } from '../L2/ActionFactory.js';
-import { generateKeyPair } from '../L0/Crypto.js';
-import type { Ed25519PrivateKey } from '../L0/Crypto.js';
-import { GovernanceKernel } from '../Kernel.js';
-import { IdentityManager } from '../L1/Identity.js';
-import { Budget, BudgetType } from '../L0/Kernel.js';
-import { SimulationEngine, MonteCarloEngine } from '../L3/Simulation.js';
+import { ActionFactory } from '../kernel-core/L2/ActionFactory.js';
+import { generateKeyPair } from '../kernel-core/L0/Crypto.js';
+import type { Ed25519PrivateKey } from '../kernel-core/L0/Crypto.js';
+import { GovernanceKernel } from '../kernel-core/Kernel.js';
+import { IdentityManager } from '../kernel-core/L1/Identity.js';
+import { Budget, BudgetType } from '../kernel-core/L0/Primitives.js';
+import { SimulationEngine, MonteCarloEngine } from '../kernel-core/L3/Simulation.js';
 
 export class Fuzzer {
     constructor(
@@ -36,7 +36,7 @@ export class Fuzzer {
         const mc = new MonteCarloEngine(sim);
 
         // 2. War Game: Find the most volatile metric
-        const risk = mc.simulate(this.kernel.State, null, 20, 50, 0.2);
+        const risk = await mc.simulate(this.kernel.State, null, 20, 50, 0.2);
 
         console.log(`[Fuzzer] Target Identified: ${risk.metricId} (Risk: ${(risk.probabilityOfFailure * 100).toFixed(1)}%)`);
 
@@ -48,13 +48,14 @@ export class Fuzzer {
         console.log(`[Fuzzer] Launching Smart Attack on ${risk.metricId} with val ${mutation}`);
 
         // 4. Execute Attack
-        const aid = this.kernel.submitAttempt(id, 'SYSTEM', action);
+        // 4. Execute Attack
+        const aid = await this.kernel.submitAttempt(id, 'SYSTEM', action);
 
         // 5. Observe Defense
         try {
-            const guardStatus = this.kernel.guardAttempt(aid);
+            const guardStatus = await this.kernel.guardAttempt(aid);
             if (guardStatus.status === 'ACCEPTED') {
-                this.kernel.commitAttempt(aid, new Budget(BudgetType.ENERGY, 100));
+                await this.kernel.commitAttempt(aid, new Budget(BudgetType.ENERGY, 100));
                 console.log(`[Fuzzer] Attack COMMITTED. System Resilience Tested.`);
             } else {
                 console.log(`[Fuzzer] Attack REJECTED (Guard): ${guardStatus.reason}`);
@@ -67,22 +68,22 @@ export class Fuzzer {
     public async runValid(id: string, key: Ed25519PrivateKey) {
         const action = ActionFactory.create('load', Math.random() * 100, id, key);
 
-        const aid = this.kernel.submitAttempt(id, 'SYSTEM', action);
-        const guardStatus = this.kernel.guardAttempt(aid);
+        const aid = await this.kernel.submitAttempt(id, 'SYSTEM', action);
+        const guardStatus = await this.kernel.guardAttempt(aid);
 
         if (guardStatus.status === 'REJECTED') throw new Error(`Fuzzer Error: Valid Action Rejected by Guard: ${guardStatus.reason}`);
 
-        this.kernel.commitAttempt(aid, new Budget(BudgetType.ENERGY, 100));
+        await this.kernel.commitAttempt(aid, new Budget(BudgetType.ENERGY, 100));
     }
 
     public async runInvalidSig(id: string, key: Ed25519PrivateKey) {
         const action = ActionFactory.create('load', 0, id, key);
         action.signature = 'deadbeef'; // Corrupt signature
 
-        const aid = this.kernel.submitAttempt(id, 'SYSTEM', action);
+        const aid = await this.kernel.submitAttempt(id, 'SYSTEM', action);
 
         // Expect Guard Rejection
-        const guardStatus = this.kernel.guardAttempt(aid);
+        const guardStatus = await this.kernel.guardAttempt(aid);
         if (guardStatus.status === 'ACCEPTED') {
             throw new Error("Fuzzer Error: Invalid Signature ACCEPTED! (Authority Breach)");
         }
@@ -92,8 +93,8 @@ export class Fuzzer {
     public async runBudgetSpam(id: string, key: Ed25519PrivateKey) {
         const action = ActionFactory.create('org.team.health', -999, id, key); // Random target
 
-        const aid = this.kernel.submitAttempt(id, 'SYSTEM', action, 1000000); // High cost
-        const guardStatus = this.kernel.guardAttempt(aid);
+        const aid = await this.kernel.submitAttempt(id, 'SYSTEM', action, 1000000); // High cost
+        const guardStatus = await this.kernel.guardAttempt(aid);
 
         if (guardStatus.status === 'REJECTED') {
             return;
@@ -101,10 +102,10 @@ export class Fuzzer {
 
         try {
             // Try to commit with small budget
-            this.kernel.commitAttempt(aid, new Budget(BudgetType.ENERGY, 10));
+            await this.kernel.commitAttempt(aid, new Budget(BudgetType.ENERGY, 10));
             throw new Error("Fuzzer Error: Budget Validation Failed! (Bankruptcy)");
         } catch (e: any) {
-            if (!e.message.indexOf("Budget")) throw e;
+            if (!e.message.includes("Budget")) throw e;
         }
     }
 
@@ -116,8 +117,8 @@ export class Fuzzer {
         const action = ActionFactory.create('access.request.emergency_active', true, id, key, Date.now(), Date.now() + 60000, 'iron.wallet.emergency.v1');
 
         try {
-            const aid = this.kernel.submitAttempt(id, 'SYSTEM', action);
-            const guardStatus = this.kernel.guardAttempt(aid);
+            const aid = await this.kernel.submitAttempt(id, 'SYSTEM', action);
+            const guardStatus = await this.kernel.guardAttempt(aid);
 
             if (guardStatus.status === 'ACCEPTED') {
                 // This means the Protocol Engine (L4) or Scope Guard (L0) failed to detect 
@@ -137,8 +138,8 @@ export class Fuzzer {
         const action = ActionFactory.create('habit.journal.streak', 999, id, key, Date.now(), Date.now() + 60000);
 
         try {
-            const aid = this.kernel.submitAttempt(id, 'SYSTEM', action);
-            const guardStatus = this.kernel.guardAttempt(aid);
+            const aid = await this.kernel.submitAttempt(id, 'SYSTEM', action);
+            const guardStatus = await this.kernel.guardAttempt(aid);
 
             if (guardStatus.status === 'ACCEPTED') {
                 // Should be blocked because only 'Habit' protocols can mutate this metric, 
@@ -158,8 +159,8 @@ export class Fuzzer {
         const action = ActionFactory.create('org.roles.active_count', -1, id, key, Date.now(), Date.now() + 60000, 'iron.team.coordination.role.v1');
 
         try {
-            const aid = this.kernel.submitAttempt(id, 'SYSTEM', action);
-            const guardStatus = this.kernel.guardAttempt(aid);
+            const aid = await this.kernel.submitAttempt(id, 'SYSTEM', action);
+            const guardStatus = await this.kernel.guardAttempt(aid);
 
             if (guardStatus.status === 'ACCEPTED') {
                 throw new Error("Fuzzer Success: Team Hierarchy Breach ACCEPTED!");

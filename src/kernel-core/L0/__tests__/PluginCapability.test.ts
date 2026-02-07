@@ -38,8 +38,9 @@ describe('M2.4 Plugin Context & Capability Enforcement', () => {
 
         identity = new IdentityManager();
         audit = new AuditLog({
-            append: jest.fn().mockResolvedValue({ evidenceId: 'ev-1', previousEvidenceId: 'ev-0' }),
-            getLatest: jest.fn().mockResolvedValue(null)
+            append: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+            getLatest: jest.fn<() => Promise<any>>().mockResolvedValue(null),
+            getHistory: jest.fn<() => Promise<any[]>>().mockResolvedValue([])
         } as any);
         state = new StateModel(audit, registry, identity);
         authority = new AuthorityEngine(identity);
@@ -86,7 +87,7 @@ describe('M2.4 Plugin Context & Capability Enforcement', () => {
             const manifest = createManifest('p1', [{ type: 'protocol', targets: [WEALTH_METRIC] }]);
             pluginRegistry.register(manifest);
             pluginRegistry.verify('p1');
-            pluginRegistry.ratify('p1', 'gov-sig');
+            pluginRegistry.ratify('p1', 'TRUSTED');
             pluginRegistry.activate('p1');
 
             const proto: Protocol = {
@@ -104,7 +105,7 @@ describe('M2.4 Plugin Context & Capability Enforcement', () => {
             };
 
             expect(() => protocols.registerFromPlugin('p1', proto)).not.toThrow();
-            protocols.ratify('transfer', 'gov-sig');
+            protocols.ratify('transfer', 'GOVERNANCE_SIGNATURE');
             protocols.activate('transfer');
             expect(protocols.isRegistered('transfer')).toBe(true);
             expect(protocols.get('transfer')?.lifecycle).toBe('ACTIVE');
@@ -156,7 +157,7 @@ describe('M2.4 Plugin Context & Capability Enforcement', () => {
                 completionConditions: []
             };
             protocols.registerFromPlugin('p1', proto);
-            protocols.ratify('p-proto', 'gov-sig');
+            protocols.ratify('p-proto', 'GOVERNANCE_SIGNATURE');
             protocols.activate('p-proto');
 
             // Mock state
@@ -208,7 +209,7 @@ describe('M2.4 Plugin Context & Capability Enforcement', () => {
             const manifest = createManifest('g1', [{ type: 'guard', phase: 'SIGNATURE' }]);
             pluginRegistry.register(manifest);
             pluginRegistry.verify('g1');
-            pluginRegistry.ratify('g1', 'gov-sig');
+            pluginRegistry.ratify('g1', 'TRUSTED');
             pluginRegistry.activate('g1');
 
             const mockGuard = jest.fn().mockReturnValue({ ok: false, violation: 'Plugin says NO' });

@@ -10,7 +10,9 @@
     "test:chaos": "cross-env NODE_OPTIONS=--experimental-vm-modules jest src/Chaos",
     "test:invariants": "cross-env NODE_OPTIONS=--experimental-vm-modules jest src/__tests__/Invariants.test.ts",
     "test:commercial": "cross-env NODE_OPTIONS=--experimental-vm-modules jest src/__tests__/CommercialDAS.test.ts src/__tests__/EnterprisePolicy.test.ts",
-    "sim:run": "echo 'Simulation runner not yet implemented'"
+    "sim:run": "echo 'Simulation runner not yet implemented'",
+    "console:dev": "vite -c src/Platform/Console/Client/vite.config.ts",
+    "console:server": "node --loader ts-node/esm src/Platform/Console/run.ts"
   },
   "keywords": [
     "governance",
@@ -41,12 +43,12 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
+    "@types/jest": "^29.5.12",
     "@types/node": "^25.0.9",
     "cross-env": "^10.1.0",
     "fast-check": "^3.15.0",
-    "jest": "^30.2.0",
-    "ts-jest": "^29.4.6",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

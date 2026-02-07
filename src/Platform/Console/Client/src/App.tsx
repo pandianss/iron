@@ -12,11 +12,15 @@ interface StateSnapshot {
     metrics: Record<string, any>;
 }
 
+import { OperantDashboard } from './components/OperantDashboard.js';
+import { TokenExchange } from './components/TokenExchange.js';
+import { ContractManager } from './components/ContractManager.js';
+
 export default function App() {
     const [status, setStatus] = useState<KernelStatus | null>(null);
     const [snapshot, setSnapshot] = useState<StateSnapshot | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [tab, setTab] = useState<'DASHBOARD' | 'STUDIO' | 'RISK'>('DASHBOARD');
+    const [tab, setTab] = useState<'DASHBOARD' | 'OPERANT' | 'EXCHANGE' | 'CONTRACTS' | 'STUDIO' | 'RISK'>('DASHBOARD');
     const [draft, setDraft] = useState<string>(JSON.stringify({
         name: "My Protocol",
         version: "1.0.0",
@@ -78,9 +82,12 @@ export default function App() {
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button onClick={() => setTab('DASHBOARD')} style={{ padding: '0.5rem 1rem', background: tab === 'DASHBOARD' ? '#2563eb' : '#333', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Dashboard</button>
-                    <button onClick={() => setTab('STUDIO')} style={{ padding: '0.5rem 1rem', background: tab === 'STUDIO' ? '#2563eb' : '#333', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Studio</button>
-                    <button onClick={() => setTab('RISK')} style={{ padding: '0.5rem 1rem', background: tab === 'RISK' ? '#e11d48' : '#333', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Risk Engine</button>
+                    <button onClick={() => setTab('DASHBOARD')} style={tabButtonStyle(tab === 'DASHBOARD')}>Dashboard</button>
+                    <button onClick={() => setTab('OPERANT')} style={tabButtonStyle(tab === 'OPERANT')}>Operant</button>
+                    <button onClick={() => setTab('EXCHANGE')} style={tabButtonStyle(tab === 'EXCHANGE')}>Exchange</button>
+                    <button onClick={() => setTab('CONTRACTS')} style={tabButtonStyle(tab === 'CONTRACTS')}>Contracts</button>
+                    <button onClick={() => setTab('STUDIO')} style={tabButtonStyle(tab === 'STUDIO')}>Studio</button>
+                    <button onClick={() => setTab('RISK')} style={tabButtonStyle(tab === 'RISK', true)}>Risk Engine</button>
                 </div>
             </header>
 
@@ -118,6 +125,12 @@ export default function App() {
                             </div>
                         </section>
                     </div>
+                ) : tab === 'OPERANT' ? (
+                    <OperantDashboard />
+                ) : tab === 'EXCHANGE' ? (
+                    <TokenExchange />
+                ) : tab === 'CONTRACTS' ? (
+                    <ContractManager />
                 ) : tab === 'STUDIO' ? (
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                         <section>
@@ -146,7 +159,7 @@ export default function App() {
                     </div>
                 )
             }
-        </div>
+        </div >
     );
 }
 
@@ -181,3 +194,16 @@ function ComplianceWidget() {
         </>
     );
 }
+
+const tabButtonStyle = (active: boolean, risk: boolean = false): React.CSSProperties => ({
+    padding: '0.5rem 1.25rem',
+    background: active ? (risk ? '#e11d48' : '#2563eb') : 'rgba(255, 255, 255, 0.05)',
+    color: active ? '#fff' : '#a1a1aa',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '0.875rem',
+    fontWeight: 500,
+    transition: 'all 0.2s ease',
+    outline: 'none'
+});

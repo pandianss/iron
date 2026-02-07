@@ -35,10 +35,10 @@ describe('L3 Simulation Engine (Stochastic)', () => {
         registry.register({ id: 'cash', description: 'Cash Flow', type: MetricType.GAUGE });
     });
 
-    test('Monte Carlo should capture variance', () => {
-        state.applyTrusted({ metricId: 'cash', value: 100 }, '0:0', 'sys');
-        state.applyTrusted({ metricId: 'cash', value: 100 }, '1:0', 'sys');
-        state.applyTrusted({ metricId: 'cash', value: 100 }, '2:0', 'sys');
+    test('Monte Carlo should capture variance', async () => {
+        await state.applyTrusted([{ metricId: 'cash', value: 100 }], '0:0', 'sys', undefined, 'init');
+        await state.applyTrusted([{ metricId: 'cash', value: 100 }], '1:0', 'sys', undefined, 'init');
+        await state.applyTrusted([{ metricId: 'cash', value: 100 }], '2:0', 'sys', undefined, 'init');
 
         const action = {
             id: 'invest',
@@ -47,7 +47,7 @@ describe('L3 Simulation Engine (Stochastic)', () => {
             valueMutation: 10
         };
 
-        const risk = monteCarlo.simulate(state, action, 10, 100, 0.5);
+        const risk = await monteCarlo.simulate(state, action, 10, 100, 0.5);
 
         expect(risk.metricId).toBe('cash');
         expect(risk.meanPredictedValue).toBeGreaterThan(130);
@@ -55,9 +55,9 @@ describe('L3 Simulation Engine (Stochastic)', () => {
         expect(risk.p90).toBeGreaterThan(risk.p10);
     });
 
-    test('Scenario should detect Failure Probability (Bankruptcy)', () => {
-        state.applyTrusted({ metricId: 'cash', value: 10 }, '0:0', 'sys');
-        state.applyTrusted({ metricId: 'cash', value: 10 }, '1:0', 'sys');
+    test('Scenario should detect Failure Probability (Bankruptcy)', async () => {
+        await state.applyTrusted([{ metricId: 'cash', value: 10 }], '0:0', 'sys', undefined, 'init');
+        await state.applyTrusted([{ metricId: 'cash', value: 10 }], '1:0', 'sys', undefined, 'init');
 
         const riskyAction = {
             id: 'gamble',
@@ -66,7 +66,7 @@ describe('L3 Simulation Engine (Stochastic)', () => {
             valueMutation: -8
         };
 
-        const risk = monteCarlo.simulate(state, riskyAction, 1, 100, 0.5);
+        const risk = await monteCarlo.simulate(state, riskyAction, 1, 100, 0.5);
         expect(risk.probabilityOfFailure).toBeGreaterThan(0);
         expect(risk.probabilityOfFailure).toBeLessThan(1);
     });

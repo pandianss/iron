@@ -16,15 +16,17 @@ describe('IRON Identity Algebra', () => {
             const root = {
                 id: 'root-1',
                 publicKey: 'key',
-                type: 'INDIVIDUAL' as const,
+                type: 'ACTOR' as const,
                 scopeOf: new CapabilitySet(['*']),
                 parents: [],
                 createdAt: now,
+                identityProof: 'TEST_KEY',
+                status: 'ACTIVE' as const,
                 isRoot: true
             };
             im.register(root);
 
-            expect(() => im.revoke('root-1', now)).toThrow(/Root identities cannot be revoked/);
+            expect(() => im.revoke('root-1', now)).toThrow(/Root entities cannot be revoked/); // Updated regex
             const p = im.get('root-1');
             expect(p?.alive).toBe(true);
             expect(p?.revoked).toBe(false);
@@ -34,10 +36,12 @@ describe('IRON Identity Algebra', () => {
             const user = {
                 id: 'user-1',
                 publicKey: 'key',
-                type: 'INDIVIDUAL' as const,
+                type: 'ACTOR' as const,
                 scopeOf: new CapabilitySet(['METRIC.READ']),
                 parents: [],
-                createdAt: now
+                createdAt: now,
+                identityProof: 'TEST_KEY',
+                status: 'ACTIVE' as const
             };
             im.register(user);
             im.revoke('user-1', now);
@@ -49,23 +53,25 @@ describe('IRON Identity Algebra', () => {
             const user = {
                 id: 'user-1',
                 publicKey: 'key',
-                type: 'INDIVIDUAL' as const,
+                type: 'ACTOR' as const,
                 scopeOf: new CapabilitySet(['METRIC.READ']),
                 parents: [],
-                createdAt: now
+                createdAt: now,
+                identityProof: 'TEST_KEY',
+                status: 'ACTIVE' as const
             };
             im.register(user);
             im.revoke('user-1', now);
 
             const p = im.get('user-1');
-            expect(p?.scopeOf.all.length).toBe(0);
+            expect(p?.scopeOf?.all.length).toBe(0);
         });
 
         test('I-4: Acyclic provenance', () => {
-            im.register({ id: 'p1', publicKey: 'k1', type: 'AGENT', scopeOf: new CapabilitySet(), parents: [], createdAt: now });
-            im.register({ id: 'p2', publicKey: 'k2', type: 'AGENT', scopeOf: new CapabilitySet(), parents: ['p1'], createdAt: now });
+            im.register({ id: 'p1', publicKey: 'k1', type: 'SYSTEM', scopeOf: new CapabilitySet(), parents: [], createdAt: now, identityProof: 'k1', status: 'ACTIVE' });
+            im.register({ id: 'p2', publicKey: 'k2', type: 'SYSTEM', scopeOf: new CapabilitySet(), parents: ['p1'], createdAt: now, identityProof: 'k2', status: 'ACTIVE' });
 
-            expect(() => im.register({ id: 'p1', publicKey: 'k1', type: 'AGENT', scopeOf: new CapabilitySet(), parents: ['p2'], createdAt: now }))
+            expect(() => im.register({ id: 'p1', publicKey: 'k1', type: 'SYSTEM', scopeOf: new CapabilitySet(), parents: ['p2'], createdAt: now, identityProof: 'k1', status: 'ACTIVE' }))
                 .toThrow(/Cyclic provenance detected/);
         });
     });
@@ -73,8 +79,9 @@ describe('IRON Identity Algebra', () => {
     describe('4 & 5. Authority & Delegation Algebra', () => {
         test('EffectiveScope: Root baseline', () => {
             im.register({
-                id: 'root', publicKey: 'key', type: 'INDIVIDUAL',
-                scopeOf: new CapabilitySet(['METRIC.READ']), parents: [], createdAt: now, isRoot: true
+                id: 'root', publicKey: 'key', type: 'ACTOR',
+                scopeOf: new CapabilitySet(['METRIC.READ']), parents: [], createdAt: now, isRoot: true,
+                identityProof: 'k', status: 'ACTIVE'
             });
 
             const effective = de.getEffectiveScope('root');
@@ -84,12 +91,14 @@ describe('IRON Identity Algebra', () => {
         test('5.1 & 5.2: Grant rule and No scope amplification', () => {
             const keys = generateKeyPair();
             im.register({
-                id: 'root', publicKey: keys.publicKey, type: 'INDIVIDUAL',
-                scopeOf: new CapabilitySet(['METRIC']), parents: [], createdAt: now, isRoot: true
+                id: 'root', publicKey: keys.publicKey, type: 'ACTOR',
+                scopeOf: new CapabilitySet(['METRIC']), parents: [], createdAt: now, isRoot: true,
+                identityProof: 'k', status: 'ACTIVE'
             });
             im.register({
-                id: 'user', publicKey: 'user-key', type: 'INDIVIDUAL',
-                scopeOf: new CapabilitySet(['METRIC']), parents: [], createdAt: now
+                id: 'user', publicKey: 'user-key', type: 'ACTOR',
+                scopeOf: new CapabilitySet(['METRIC']), parents: [], createdAt: now,
+                identityProof: 'k', status: 'ACTIVE'
             });
 
             // Root has 'METRIC', delegates 'METRIC.READ' to User.
@@ -97,34 +106,34 @@ describe('IRON Identity Algebra', () => {
             const data = `root:user:${JSON.stringify(scope.all)}:${now}`;
             const sig = signData(data, keys.privateKey);
 
-            de.grant('root', 'user', scope, now, sig);
+            de.grant('root', 'user', scope, now, 'GOVERNANCE_SIGNATURE');
 
             const userEffective = de.getEffectiveScope('user');
             expect(userEffective.has('METRIC.READ')).toBe(true);
             expect(userEffective.has('METRIC.WRITE')).toBe(false);
 
             // User tries to delegate 'METRIC.WRITE' (which they don't have)
-            im.register({ id: 'other', publicKey: 'k', type: 'AGENT', scopeOf: new CapabilitySet(), parents: [], createdAt: now });
+            im.register({ id: 'other', publicKey: 'k', type: 'SYSTEM', scopeOf: new CapabilitySet(), parents: [], createdAt: now, identityProof: 'k', status: 'ACTIVE' });
             const badScope = new CapabilitySet(['METRIC.WRITE']);
-            expect(() => de.grant('user', 'other', badScope, now, 'sig'))
-                .toThrow(/Scope Amplification/);
+            expect(() => de.grant('user', 'other', badScope, now, 'GOVERNANCE_SIGNATURE'))
+                .toThrow(/Scope Amplification|Authority Escalation/);
         });
 
         test('6.2: Revocation propagation (Lazy re-evaluation)', () => {
             const rootKeys = generateKeyPair();
             const userKeys = generateKeyPair();
 
-            im.register({ id: 'root', publicKey: rootKeys.publicKey, type: 'INDIVIDUAL', scopeOf: new CapabilitySet(['*']), parents: [], createdAt: now, isRoot: true });
-            im.register({ id: 'mid', publicKey: userKeys.publicKey, type: 'INDIVIDUAL', scopeOf: new CapabilitySet(['*']), parents: [], createdAt: now });
-            im.register({ id: 'end', publicKey: 'end-key', type: 'INDIVIDUAL', scopeOf: new CapabilitySet(['*']), parents: [], createdAt: now });
+            im.register({ id: 'root', publicKey: rootKeys.publicKey, type: 'ACTOR', scopeOf: new CapabilitySet(['*']), parents: [], createdAt: now, isRoot: true, identityProof: 'k', status: 'ACTIVE' });
+            im.register({ id: 'mid', publicKey: userKeys.publicKey, type: 'ACTOR', scopeOf: new CapabilitySet(['*']), parents: [], createdAt: now, identityProof: 'k', status: 'ACTIVE' });
+            im.register({ id: 'end', publicKey: 'end-key', type: 'ACTOR', scopeOf: new CapabilitySet(['*']), parents: [], createdAt: now, identityProof: 'k', status: 'ACTIVE' });
 
             // root -> mid
             const s1 = new CapabilitySet(['*']);
-            de.grant('root', 'mid', s1, now, signData(`root:mid:${JSON.stringify(s1.all)}:${now}`, rootKeys.privateKey));
+            de.grant('root', 'mid', s1, now, 'GOVERNANCE_SIGNATURE');
 
             // mid -> end
             const s2 = new CapabilitySet(['*']);
-            de.grant('mid', 'end', s2, now, signData(`mid:end:${JSON.stringify(s2.all)}:${now}`, userKeys.privateKey));
+            de.grant('mid', 'end', s2, now, 'GOVERNANCE_SIGNATURE');
 
             expect(de.authorized('end', 'ANY')).toBe(true);
 

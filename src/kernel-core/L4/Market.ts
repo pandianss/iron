@@ -11,10 +11,10 @@ export class ProtocolMarket {
         private state: StateModel
     ) { }
 
-    public vet(bundle: ProtocolBundle): { allowed: boolean; riskDelta: number; reason?: string } {
+    public async vet(bundle: ProtocolBundle): Promise<{ allowed: boolean; riskDelta: number; reason?: string }> {
         // 1. Baseline Risk (Current State)
         // We simulate "Inertia" (running 10 ticks forward with no action)
-        const baselineRisk = this.riskEngine.simulate(
+        const baselineRisk = await this.riskEngine.simulate(
             this.state,
             null, // No specific action, just system drift
             20,   // Horizon
@@ -23,7 +23,7 @@ export class ProtocolMarket {
         );
 
         // 2. Simulated Risk (With New Bundle)
-        const simulatedRisk = this.riskEngine.simulate(
+        const simulatedRisk = await this.riskEngine.simulate(
             this.state,
             null,
             20,
@@ -50,9 +50,9 @@ export class ProtocolMarket {
         return { allowed: true, riskDelta: delta };
     }
 
-    public install(bundle: ProtocolBundle, trustScope: string) {
+    public async install(bundle: ProtocolBundle, trustScope: string) {
         // 1. Algorithmic Vetting
-        const vetting = this.vet(bundle);
+        const vetting = await this.vet(bundle);
         if (!vetting.allowed) {
             throw new Error(`Market Violation: Bundle Rejected. Reason: ${vetting.reason}`);
         }

@@ -1,10 +1,10 @@
 import { StateModel } from '../kernel-core/L2/State.js';
 import type { Action, ActionPayload, EntityID } from '../kernel-core/L0/Ontology.js';
 import { AuditLog } from '../kernel-core/L5/Audit.js';
-import { signData, hash } from '../kernel-core/L0/Crypto.js';
+import { signData, hash, canonicalize } from '../kernel-core/L0/Crypto.js';
 import type { KeyPair } from '../kernel-core/L0/Crypto.js';
 import { GovernanceKernel } from '../kernel-core/Kernel.js';
-import { Budget, BudgetType } from '../kernel-core/L0/Kernel.js';
+import { Budget, BudgetType } from '../kernel-core/L0/Primitives.js';
 
 /**
  * 6. Interface (Constitutional Interface)
@@ -284,8 +284,9 @@ export class ActionBuilder {
         // Action ID = SHA256(Initiator + Payload + TS + Exp)
         const actionId = hash(`${this.initiator}:${JSON.stringify(payload)}:${this.timestamp}:${this.expiresAt}`);
 
-        // Signature must match Kernel's validation string
-        const data = `${actionId}:${this.initiator}:${JSON.stringify(payload)}:${this.timestamp}:${this.expiresAt}`;
+        // Use imported canonicalize for consistent property ordering
+        // const { canonicalize } = require('../kernel-core/L0/Crypto.js'); 
+        const data = `${actionId}:${this.initiator}:${canonicalize(payload)}:${this.timestamp}:${this.expiresAt}`;
         const signature = signData(data, keyPair.privateKey);
 
         return {

@@ -2,8 +2,8 @@
 import { IdentityManager, AuthorityEngine } from '../L1/Identity.js';
 import { verifySignature, canonicalize } from './Crypto.js';
 import type { Action } from './Ontology.js';
-import { Budget } from './Kernel.js';
-import type { Protocol } from '../L4/Protocol.js';
+import { Budget } from './Primitives.js';
+import type { Protocol } from '../L4/ProtocolTypes.js';
 import { checkInvariants, type InvariantContext } from './Invariants.js';
 import { ErrorCode } from '../Errors.js';
 
@@ -77,6 +77,96 @@ export const ConflictGuard: Guard<{ protocols: Protocol[] }> = ({ protocols }) =
 // 6. Replay Guard (The Bureaucratic Memory)
 export const ReplayGuard: Guard<{ actionId: string, seen: Set<string> }> = ({ actionId, seen }) => {
     if (seen.has(actionId)) return FAIL(ErrorCode.REPLAY_DETECTED, `Replay Violation: Action ${actionId} already processed`);
+    return OK;
+};
+
+// --- Behavioral Constitution Guards ---
+
+// 7. Proposal Cooldown Guard (Article II - Collective Cognition: Deliberation Latency)
+export const ProposalCooldownGuard: Guard<{
+    proposalTimestamp: string,
+    currentTimestamp: string,
+    minimumCooldown: number // in seconds
+}> = ({ proposalTimestamp, currentTimestamp, minimumCooldown }) => {
+    // Parse timestamps (format: "time:logical")
+    const proposedTime = parseInt(proposalTimestamp.split(':')[0] || '0');
+    const currentTime = parseInt(currentTimestamp.split(':')[0] || '0');
+
+    const delta = currentTime - proposedTime;
+
+    if (delta < minimumCooldown) {
+        return FAIL(
+            ErrorCode.COOLDOWN_VIOLATION,
+            `Deliberation Latency Required: ${minimumCooldown - delta}ms remaining`
+        );
+    }
+
+    return OK;
+};
+
+// 8. MultiSig Guard (Article II - Collective Cognition: Plurality Requirement)
+export interface MultiSigContext {
+    action: Action;
+    requiredSignatures: number;
+    providedSignatures: string[]; // Array of signatures
+    authorizedSigners: string[]; // Array of EntityIDs
+    identityManager: IdentityManager;
+}
+
+export const MultiSigGuard: Guard<MultiSigContext> = ({
+    action,
+    requiredSignatures,
+    providedSignatures,
+    authorizedSigners,
+    identityManager
+}) => {
+    if (providedSignatures.length < requiredSignatures) {
+        return FAIL(
+            ErrorCode.MULTISIG_INSUFFICIENT,
+            `Requires ${requiredSignatures} signatures, got ${providedSignatures.length}`
+        );
+    }
+
+    // Verify each signature
+    const data = `${action.actionId}:${action.initiator}:${canonicalize(action.payload)}:${action.timestamp}:${action.expiresAt}`;
+    let validCount = 0;
+
+    for (const sig of providedSignatures) {
+        for (const signerId of authorizedSigners) {
+            const entity = identityManager.get(signerId);
+            if (entity && verifySignature(data, sig, entity.publicKey)) {
+                validCount++;
+                break;
+            }
+        }
+    }
+
+    if (validCount < requiredSignatures) {
+        return FAIL(
+            ErrorCode.MULTISIG_INVALID,
+            `Only ${validCount} valid signatures from authorized signers`
+        );
+    }
+
+    return OK;
+};
+
+// 9. Irreversibility Guard (Article V - Continuity Bias: Future Privilege)
+export const IrreversibilityGuard: Guard<{
+    action: Action,
+    requiredApprovals: number,
+    providedApprovals: number
+}> = ({ action, requiredApprovals, providedApprovals }) => {
+    // Check if action is marked as irreversible
+    const irreversible = (action.payload as any).irreversible;
+
+    if (irreversible && providedApprovals < requiredApprovals) {
+        return FAIL(
+            ErrorCode.IRREVERSIBILITY_VIOLATION,
+            `Irreversible action requires ${requiredApprovals} approvals, got ${providedApprovals}`
+        );
+    }
+
     return OK;
 };
 

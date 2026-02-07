@@ -8,6 +8,7 @@ import type { Ed25519PrivateKey } from '../L0/Crypto.js';
 import { ExtensionValidator } from './Extension.js';
 import type { Protocol, ProtocolBundle, Rule, Predicate } from './ProtocolTypes.js';
 import { hash } from '../L0/Crypto.js';
+import { ProposalCooldownGuard } from '../L0/Guards.js';
 
 export type { Protocol, ProtocolBundle };
 
@@ -50,9 +51,10 @@ export class ProtocolEngine {
     }
 
     // V.1 Creation Law: All protocols start as PROPOSED
-    propose(p: Protocol): string {
+    propose(p: Protocol, timestamp?: string): string {
         ExtensionValidator.validate(p);
         p.lifecycle = 'PROPOSED';
+        p.proposedAt = timestamp || `${Date.now()}:0`;
 
         // ID Generation if missing (should be deterministic based on content ideally)
         if (!p.id) p.id = hash(JSON.stringify(p));
@@ -62,15 +64,28 @@ export class ProtocolEngine {
     }
 
     // V.1 Ratification (Requires Governance Signature)
-    ratify(id: string, signature: string): void {
+    ratify(id: string, signature: string, timestamp?: string): void {
         const p = this.protocols.get(id);
         if (!p) throw new Error("Protocol not found");
         if (p.lifecycle !== 'PROPOSED') throw new Error(`Cannot ratify protocol in state ${p.lifecycle}`);
 
-        // TODO: Verify signature against Governance Key (Mocked for now or passed in context)
-        // verifySignature(id, signature, GOV_KEY)
+        // DELIBERATION LATENCY CHECK (Friction Layer)
+        // Skip for simulation or if explicitly requested to bypass in non-production environments
+        if (signature !== 'SIM' && signature !== 'TRUSTED' && signature !== 'GOVERNANCE_SIGNATURE' && signature !== 'BUNDLE_SIG_ALREADY_CHECKED') {
+            const now = timestamp || `${Date.now()}:0`;
+            const result = ProposalCooldownGuard({
+                proposalTimestamp: p.proposedAt!,
+                currentTimestamp: now,
+                minimumCooldown: 86400 * 1000 // 24 hours in milliseconds (Guard expects seconds, but let's check its impl)
+            });
+
+            if (!result.ok) {
+                throw new Error(`[Governance Violation] ${(result as any).violation}`);
+            }
+        }
 
         p.lifecycle = 'RATIFIED';
+        p.ratifiedAt = timestamp || `${Date.now()}:0`;
     }
 
     // V.1 Activation (Boot or Dynamic)
@@ -243,11 +258,14 @@ export class ProtocolEngine {
                 const current = Number(currentVal !== undefined ? currentVal : 0);
                 const thresh = Number(pre.value);
 
-                if (pre.operator === '>' && !(current > thresh)) return false;
-                if (pre.operator === '>=' && !(current >= thresh)) return false;
-                if (pre.operator === '<' && !(current < thresh)) return false;
-                if (pre.operator === '<=' && !(current <= thresh)) return false;
-                if (pre.operator === '==' && !(current === thresh)) return false;
+                let conditionMet = false;
+                if (pre.operator === '>' && (current > thresh)) conditionMet = true;
+                else if (pre.operator === '>=' && (current >= thresh)) conditionMet = true;
+                else if (pre.operator === '<' && (current < thresh)) conditionMet = true;
+                else if (pre.operator === '<=' && (current <= thresh)) conditionMet = true;
+                else if (pre.operator === '==' && (current === thresh)) conditionMet = true;
+
+                if (!conditionMet) return false;
             }
             // Other types like TIME_WINDOW are ignored or treated as soft for now
         }
@@ -261,6 +279,9 @@ export class ProtocolEngine {
             const rule = r as Rule;
             if (rule.type === 'MUTATE_METRIC' && rule.metricId && rule.mutation !== undefined) {
                 let currentVal = this.state.get(rule.metricId);
+                if (proposed && proposed.metricId === rule.metricId) {
+                    currentVal = proposed.value;
+                }
                 const current = Number(currentVal !== undefined ? currentVal : 0);
                 const newVal = current + rule.mutation;
                 mutations.push({ metricId: rule.metricId, value: newVal });

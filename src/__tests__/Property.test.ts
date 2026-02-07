@@ -2,7 +2,7 @@
 import { describe, test, expect } from '@jest/globals';
 import fc from 'fast-check';
 import { GovernanceKernel } from '../kernel-core/Kernel.js';
-import { Budget } from '../kernel-core/L0/Kernel.js';
+import { Budget } from '../kernel-core/L0/Primitives.js';
 import { IdentityManager } from '../kernel-core/L1/Identity.js';
 import type { Entity } from '../kernel-core/L1/Identity.js';
 import { AuthorityEngine } from '../kernel-core/L1/Identity.js';

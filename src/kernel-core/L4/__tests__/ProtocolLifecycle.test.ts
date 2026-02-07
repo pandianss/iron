@@ -13,10 +13,16 @@ describe('Protocol Genesis (V.1)', () => {
     beforeEach(() => {
         engine = new ProtocolEngine(mockState);
         proto = {
+            id: 'test-protocol',
             name: 'TestProto',
             version: '1.0.0',
             category: 'Intent',
+            lifecycle: 'PROPOSED',
             preconditions: [{ type: 'ALWAYS' }],
+            triggerConditions: [],
+            authorizedCapacities: [],
+            stateTransitions: [],
+            completionConditions: [],
             execution: []
         };
     });
@@ -34,7 +40,7 @@ describe('Protocol Genesis (V.1)', () => {
 
     test('V.1 Ratification Transition', () => {
         const id = engine.propose(proto);
-        engine.ratify(id, 'sig');
+        engine.ratify(id, 'TRUSTED'); // Bypass cooldown
         expect(engine.get(id)?.lifecycle).toBe('RATIFIED');
 
         engine.activate(id);
@@ -51,7 +57,7 @@ describe('Protocol Genesis (V.1)', () => {
         // If it's not active, it shouldn't trigger.
         expect(mutations.length).toBe(0);
 
-        engine.ratify(id, 'sig');
+        engine.ratify(id, 'TRUSTED');
         engine.activate(id);
 
         // Now it should run (ALWAYS precondition)
@@ -64,7 +70,7 @@ describe('Protocol Genesis (V.1)', () => {
 
     test('V.2 Death Law: REVOKED is dead', () => {
         const id = engine.propose(proto);
-        engine.ratify(id, 'sig');
+        engine.ratify(id, 'TRUSTED');
         engine.activate(id);
         engine.revoke(id);
 

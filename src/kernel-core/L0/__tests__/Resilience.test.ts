@@ -18,8 +18,8 @@ describe('M2.1 Threat Mitigation (Resilience)', () => {
 
         identity = new IdentityManager();
         identity.register({
-            id: 'alice', publicKey: 'pub_alice', status: 'ACTIVE', type: 'INDIVIDUAL', createdAt: '0:0', identityProof: 'proof'
-        } as any);
+            id: 'alice', publicKey: 'pub_alice', status: 'ACTIVE', type: 'ACTOR', createdAt: '0:0', identityProof: 'proof'
+        });
 
         authority = new AuthorityEngine(identity);
         authority.authorized = jest.fn().mockReturnValue(true) as any;
@@ -30,17 +30,16 @@ describe('M2.1 Threat Mitigation (Resilience)', () => {
         let appendCount = 0;
         const events: any[] = [];
         const mockStore: IEventStore = {
-            append: jest.fn().mockImplementation(async (evidence: any) => {
+            append: jest.fn(async (evidence: any) => {
                 appendCount++;
                 // Fail on 4th append (second action's commit phase)
                 if (appendCount === 4) {
                     throw new Error('SIMULATED_STORAGE_FAILURE: Disk full');
                 }
                 events.push(evidence);
-                return Promise.resolve();
             }),
-            getHistory: jest.fn().mockImplementation(async () => events),
-            getLatest: jest.fn().mockImplementation(async () =>
+            getHistory: jest.fn(async () => events),
+            getLatest: jest.fn(async () =>
                 events.length > 0 ? events[events.length - 1] : null
             )
         };
@@ -91,11 +90,11 @@ describe('M2.1 Threat Mitigation (Resilience)', () => {
         // Setup original kernel
         const crashTestEvents: any[] = [];
         const mockStore: IEventStore = {
-            append: jest.fn().mockImplementation(async (evidence: any) => {
+            append: jest.fn(async (evidence: any) => {
                 crashTestEvents.push(evidence);
             }),
-            getHistory: jest.fn().mockImplementation(async () => crashTestEvents),
-            getLatest: jest.fn().mockImplementation(async () =>
+            getHistory: jest.fn(async () => crashTestEvents),
+            getLatest: jest.fn(async () =>
                 crashTestEvents.length > 0 ? crashTestEvents[crashTestEvents.length - 1] : null
             )
         };

@@ -1,4 +1,5 @@
 import { LogicalTimestamp } from '../kernel-core/L0/Kernel.js';
+import { Budget } from '../kernel-core/L0/Primitives.js';
 import { generateKeyPair, signData, hash } from '../kernel-core/L0/Crypto.js';
 import type { KeyPair } from '../kernel-core/L0/Crypto.js';
 import { IdentityManager, AuthorityEngine } from '../kernel-core/L1/Identity.js';
@@ -148,7 +149,7 @@ describe('Iron Canonical Protocol Bundles', () => {
             preconditions: [], execution: [{ type: 'MUTATE_METRIC', metricId: 'recovery', mutation: 1 }]
         };
         protocol.propose(pExisting);
-        protocol.ratify('existing', 'GOV');
+        protocol.ratify('existing', 'TRUSTED');
         protocol.activate('existing');
 
 

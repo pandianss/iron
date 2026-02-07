@@ -14,15 +14,25 @@ describe('L4 Protocol Market (Safety Vetting)', () => {
     let registry: MetricRegistry;
 
     const owner = {
-        publicKey: 'ed25519:deadbeef',
-        scope: '*'
+        entityId: 'u1',
+        publicKey: 'ed25519:deadbeef'
     };
 
     beforeEach(() => {
         const audit = new AuditLog();
         registry = new MetricRegistry();
         const identity = new IdentityManager();
-        identity.register({ id: 'sys', publicKey: 'sys', type: 'AGENT', scopeOf: new CapabilitySet(['*']), parents: [], createdAt: '0:0', isRoot: true });
+        identity.register({
+            id: 'sys',
+            publicKey: 'sys',
+            type: 'SYSTEM',
+            scopeOf: new CapabilitySet(['*']),
+            parents: [],
+            createdAt: '0:0',
+            isRoot: true,
+            identityProof: 'ROOT_PROOF',
+            status: 'ACTIVE'
+        });
 
         state = new StateModel(audit, registry, identity);
         const protocolEngine = new ProtocolEngine(state);
@@ -33,76 +43,68 @@ describe('L4 Protocol Market (Safety Vetting)', () => {
 
         registry.register({ id: 'stability', description: '', type: MetricType.GAUGE });
         registry.register({ id: 'system.load', description: 'System Heartbeat', type: MetricType.GAUGE });
-        state.applyTrusted({ metricId: 'system.load', value: 100 }, '0:0', 'sys');
-        // Initialize stability to 100
-        state.applyTrusted({ metricId: 'stability', value: 100 }, '0:0', 'sys');
-        state.applyTrusted({ metricId: 'stability', value: 100 }, '1:0', 'sys');
-        state.applyTrusted({ metricId: 'stability', value: 100 }, '2:0', 'sys');
+
+        // Use an async setup or wrap in IIFE if needed, but here we can just do it in each test or the beforeAll
+        // Actually, beforeEach is fine if we await
     });
 
-    test('Should INSTALL a Safe Protocol', () => {
+    test('Should INSTALL a Safe Protocol', async () => {
+        await state.applyTrusted([{ metricId: 'system.load', value: 100 }], '0:0', 'sys', undefined, 'init');
+        await state.applyTrusted([{ metricId: 'stability', value: 100 }], '0:0', 'sys', undefined, 'init');
+
         const safeBundle: ProtocolBundle = {
             bundleId: 'safe-bundle',
-            libraryName: 'safe-lib',
-            version: '1.0.0',
             owner: owner,
-            createdAt: '0:0',
-            signature: 'sig', // Mocked, assuming vetted logic bypasses sig verification for this unit test?
-            // Wait, verifySignature usage in ProtocolEngine.loadBundle might fail.
-            // But vetted.install calls protocolEngine.loadBundle.
-            // We need to either mock loadBundle or provide valid sig.
-            // Actually, ProtocolMarket calls loadBundle.
-            // Let's mock protocolEngine.loadBundle to avoid crypto overhead in this test.
+            signature: 'sig',
             protocols: [{
+                id: 'safe-p',
                 name: 'SafeProto',
                 version: '1.0.0',
                 category: 'Intent',
+                lifecycle: 'ACTIVE',
                 preconditions: [{ type: 'ALWAYS' }],
-                execution: [] // Do nothing
+                triggerConditions: [],
+                authorizedCapacities: [],
+                stateTransitions: [],
+                completionConditions: [],
+                execution: []
             }]
         };
 
-        // We assume verifySignature is bypassed or mocked?
-        // Actually, let's Spy on protocolEngine.loadBundle to prevent actual execution logic failing on sigs
-        // We only care about VETTING logic here.
-        // Wait, market.install calls loadBundle.
-        // If we want to test 'install', we need valid signature OR mock.
-
-        // Let's test 'vet' directly first to avoid Crypto complexity.
-
-        const result = market.vet(safeBundle);
+        const result = await market.vet(safeBundle);
         expect(result.allowed).toBe(true);
         expect(result.riskDelta).toBeLessThanOrEqual(0);
     });
 
-    test('Should REJECT a Risky Protocol', () => {
+    test('Should REJECT a Risky Protocol', async () => {
+        await state.applyTrusted([{ metricId: 'system.load', value: 100 }], '0:0', 'sys', undefined, 'init');
+        await state.applyTrusted([{ metricId: 'stability', value: 100 }], '0:0', 'sys', undefined, 'init');
+
         // A protocol that reduces stability drastically
         const riskyBundle: ProtocolBundle = {
             bundleId: 'risky-bundle',
-            libraryName: 'risky-lib',
-            version: '1.0.0',
             owner: owner,
-            createdAt: '0:0',
             signature: 'sig',
             protocols: [{
                 id: 'chaos',
                 name: 'ChaosMaker',
                 version: '1.0.0',
                 category: 'Risk',
+                lifecycle: 'ACTIVE',
                 preconditions: [{ type: 'ALWAYS' }],
+                triggerConditions: [],
+                authorizedCapacities: [],
+                stateTransitions: [],
+                completionConditions: [],
                 execution: [{
                     type: 'MUTATE_METRIC',
                     metricId: 'system.load',
-                    mutation: -50 // Huge hit to load (simulating crash or unloading?)
-                    // Wait, failure condition in Market.ts?
-                    // Market.ts uses default failureCondition: (val) => val < 0.
-                    // If system.load starts at 0?
-                    // Let's set initial system.load to 100 in setup.
+                    mutation: -50
                 }]
             }]
         };
 
-        const result = market.vet(riskyBundle);
+        const result = await market.vet(riskyBundle);
 
         console.log("Risky Vetting Result:", result);
 

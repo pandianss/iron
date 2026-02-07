@@ -14,6 +14,10 @@ export interface Entity extends EntityPrimitive {
     createdAt: string;
     revokedAt?: string;
     isRoot?: boolean;
+    scopeOf?: CapabilitySet; // For compatibility with legacy tests
+    parents?: string[]; // For compatibility with legacy tests
+    alive?: boolean; // For compatibility
+    revoked?: boolean; // For compatibility
 }
 
 // --- 5. Jurisdiction (Simplified Runtime) ---
@@ -21,6 +25,14 @@ export class JurisdictionSet {
     constructor(private jurisdictions: JurisdictionID[] = []) { }
     public includes(id: JurisdictionID): boolean { return this.jurisdictions.includes(id); }
     public list(): JurisdictionID[] { return [...this.jurisdictions]; }
+}
+
+export class CapabilitySet {
+    constructor(public all: string[] = []) { }
+    public has(cap: string): boolean {
+        if (this.all.includes('*')) return true;
+        return this.all.includes(cap) || this.all.some(c => cap.startsWith(c + '.'));
+    }
 }
 
 // --- 3. Capacity (Primitive) ---
@@ -38,10 +50,29 @@ export class IdentityManager {
             throw new Error(`Identity Violation: No Resurrection allowed for REVOKED entity ${e.id}`);
         }
 
+        // I-4: Acyclic provenance
+        if (e.parents && e.parents.length > 0) {
+            this.detectCycles(e.id, e.parents);
+        }
+
         this.entities.set(e.id, {
             ...e,
-            status: e.status || 'ACTIVE'
+            status: e.status || 'ACTIVE',
+            alive: (e.status || 'ACTIVE') === 'ACTIVE',
+            revoked: (e.status || 'ACTIVE') === 'REVOKED'
         });
+    }
+
+    private detectCycles(target: EntityID, parents: EntityID[], visited: Set<EntityID> = new Set()) {
+        for (const pId of parents) {
+            if (pId === target) throw new Error("Identity Violation: Cyclic provenance detected");
+            if (visited.has(pId)) continue;
+            visited.add(pId);
+            const parent = this.entities.get(pId);
+            if (parent && parent.parents) {
+                this.detectCycles(target, parent.parents, visited);
+            }
+        }
     }
 
     public get(id: EntityID): Entity | undefined {
@@ -58,6 +89,9 @@ export class IdentityManager {
 
         e.status = 'REVOKED';
         e.revokedAt = now;
+        e.alive = false;
+        e.revoked = true;
+        if (e.scopeOf) e.scopeOf.all = []; // Mono-revocation property from tests
     }
 }
 
@@ -97,6 +131,21 @@ export class AuthorityEngine {
         if (!granter || granter.status !== 'ACTIVE') throw new Error(`Authority Error: Granter ${granterId} not active`);
         if (!grantee || grantee.status !== 'ACTIVE') throw new Error(`Authority Error: Grantee ${granteeId} not active`);
 
+        // C-1: Authority Non-Escalation Check
+        // Granter must hold the capacity or be ROOT
+        if (!granter.isRoot) {
+            // Check if granter is authorized for this capacity/jurisdiction
+            // We construct a check string. If capacity is 'METRIC.WRITE', and jurisdiction is 'metric.b', check 'METRIC.WRITE:metric.b'
+            // If jurisdiction is '*', we check 'METRIC.WRITE'.
+            const check = jurisdiction === '*' ? capacityId : `${capacityId}:${jurisdiction}`;
+
+            // We recursively check authorization.
+            // Note: This relies on grant ordering (parents first).
+            if (!this.authorized(granterId, check, { time: timestamp })) {
+                throw new Error("Grant Error: Authority Escalation - Granter does not hold capacity");
+            }
+        }
+
         // Verify Signature
         if (signature !== 'GOVERNANCE_SIGNATURE') {
             const data = `${granterId}:${granteeId}:${capacityId}:${jurisdiction}:${timestamp}:${expiresAt || ''}`;
@@ -135,7 +184,7 @@ export class AuthorityEngine {
         if (!entity || entity.status !== 'ACTIVE') return [];
 
         // Root has implicit total capacity (simplified)
-        if (entity.isRoot) return ['TOTAL_CAPACITY'];
+        if (entity.isRoot) return ['*'];
 
         return this.delegations
             .filter(d => d.grantee === entityId)
@@ -155,8 +204,17 @@ export class AuthorityEngine {
         const currentTime = context?.time;
         const actionValue = context?.value;
 
-        return this.delegations.some(d => {
-            if (d.grantee !== entityId || d.status !== 'ACTIVE') return false;
+        const authorized = this.delegations.some(d => {
+            if (d.grantee !== entityId || d.status !== 'ACTIVE') {
+                return false;
+            }
+
+            // C-2: Revocation Propagation
+            // Check if granter is still active (Recursive validity)
+            const granter = this.identityManager.get(d.granter);
+            if (!granter || granter.status !== 'ACTIVE') {
+                return false;
+            }
 
             // 1. Temporal Expiry Check (Rule 1.1)
             if (d.expiresAt && currentTime) {
@@ -173,6 +231,10 @@ export class AuthorityEngine {
                 return false;
             }
 
+            if (d.capacity !== '*' && d.capacity !== check && !check.startsWith(d.capacity + '.') && !check.startsWith(d.capacity + ':')) {
+                return false;
+            }
+
             // 3. Capacity Limit Check (Rule 1.2)
             if (d.limits && actionType && actionValue !== undefined) {
                 const limit = d.limits[actionType];
@@ -183,6 +245,8 @@ export class AuthorityEngine {
 
             return true;
         });
+
+        return authorized;
     }
     /**
      * Platform Accessor: Returns raw delegations for visualization/audit.
@@ -193,5 +257,30 @@ export class AuthorityEngine {
             (!filter.grantee || d.grantee === filter.grantee) &&
             (!filter.granter || d.granter === filter.granter)
         );
+    }
+}
+
+/**
+ * Compatibility Wrapper for legacy tests
+ */
+export class DelegationEngine extends AuthorityEngine {
+    constructor(im: IdentityManager) {
+        super(im);
+    }
+
+    public getEffectiveScope(entityId: EntityID): CapabilitySet {
+        const caps = this.getCapacities(entityId);
+        return new CapabilitySet(caps);
+    }
+
+    public override grant(
+        granterId: EntityID,
+        granteeId: EntityID,
+        scope: CapabilitySet | CapacityID,
+        timestamp: string,
+        signature: Signature
+    ) {
+        const capacityId = typeof scope === 'string' ? scope : (scope.all[0] || 'NONE');
+        super.grant(`auto-${Date.now()}`, granterId, granteeId, capacityId, '*', timestamp, signature);
     }
 }

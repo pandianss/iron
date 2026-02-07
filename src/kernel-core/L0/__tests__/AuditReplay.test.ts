@@ -6,7 +6,7 @@ import { StateModel, MetricRegistry, MetricType } from '../../L2/State.js';
 import type { Action, Mutation } from '../../L0/Ontology.js';
 import { IdentityManager, AuthorityEngine } from '../../L1/Identity.js';
 import { ProtocolEngine } from '../../L4/Protocol.js';
-import { Budget } from '../../L0/Kernel.js';
+import { Budget } from '../../L0/Primitives.js';
 
 describe('Audit & Replay Integration', () => {
     test('should reconstruct state perfectly from AuditLog', async () => {
@@ -19,7 +19,7 @@ describe('Audit & Replay Integration', () => {
             id: 'alice',
             publicKey: 'pubkey',
             status: 'ACTIVE' as const,
-            type: 'INDIVIDUAL' as any,
+            type: 'ACTOR' as any,
             createdAt: '1000:0',
             identityProof: 'proof'
         };
@@ -36,7 +36,7 @@ describe('Audit & Replay Integration', () => {
         kernel.boot();
 
         // Setup Authority
-        authority.authorized = jest.fn().mockReturnValue(true);
+        (authority as any).authorized = jest.fn().mockReturnValue(true);
 
         // 2. Execute Actions
         const actions = [

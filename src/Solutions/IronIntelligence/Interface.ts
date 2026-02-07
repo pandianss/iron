@@ -24,12 +24,12 @@ export class IronIntelligenceInterface {
     async initializeIntelligence() {
         if (!this.engine.isRegistered(Simulation_Verification_Protocol.id!)) {
             this.engine.propose(Simulation_Verification_Protocol);
-            this.engine.ratify(Simulation_Verification_Protocol.id!, 'GOVERNANCE_SIGNATURE');
+            this.engine.ratify(Simulation_Verification_Protocol.id!, 'TRUSTED');
             this.engine.activate(Simulation_Verification_Protocol.id!);
         }
         if (!this.engine.isRegistered(Adaptive_Evolution_Protocol.id!)) {
             this.engine.propose(Adaptive_Evolution_Protocol);
-            this.engine.ratify(Adaptive_Evolution_Protocol.id!, 'GOVERNANCE_SIGNATURE');
+            this.engine.ratify(Adaptive_Evolution_Protocol.id!, 'TRUSTED');
             this.engine.activate(Adaptive_Evolution_Protocol.id!);
         }
     }

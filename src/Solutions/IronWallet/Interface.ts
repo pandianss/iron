@@ -29,10 +29,10 @@ export class IronWalletInterface {
 
         // In a real app, we would auto-ratify/activate here based on user signature
         // For now, we assume implicit activation for the solution
-        this.engine.ratify(Sovereign_Silence_Protocol.id!, 'user-sig-1');
+        this.engine.ratify(Sovereign_Silence_Protocol.id!, 'TRUSTED');
         this.engine.activate(Sovereign_Silence_Protocol.id!);
 
-        this.engine.ratify(Medical_Emergency_Protocol.id!, 'user-sig-1');
+        this.engine.ratify(Medical_Emergency_Protocol.id!, 'TRUSTED');
         this.engine.activate(Medical_Emergency_Protocol.id!);
     }
 

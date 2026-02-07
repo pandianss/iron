@@ -2,7 +2,7 @@ import { StateModel } from '../kernel-core/L2/State.js';
 import type { Action, ActionPayload } from '../kernel-core/L2/State.js';
 import type { AttemptID, Commit } from '../kernel-core/Kernel.js';
 import { GovernanceKernel } from '../kernel-core/Kernel.js';
-import { Budget } from '../kernel-core/L0/Kernel.js';
+import { Budget } from '../kernel-core/L0/Primitives.js';
 import {
     PlatformError,
     PolicyViolationError,
@@ -155,6 +155,13 @@ export class KernelPlatform {
      */
     public query(metricId: string): any {
         return this.kernel.state.get(metricId);
+    }
+
+    /**
+     * Get state history
+     */
+    public getHistory(metricId: string): any[] {
+        return this.kernel.state.getHistory(metricId);
     }
 
     /**

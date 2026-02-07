@@ -11,7 +11,7 @@ describe('Iron-5 Constitutional State Machine', () => {
 
     beforeEach(() => {
         const identity = new IdentityManager();
-        const delegation = new DelegationEngine();
+        const delegation = new DelegationEngine(identity);
         const audit = new AuditLog();
         const registry = new MetricRegistry();
         const state = new StateModel(audit, registry, identity);
@@ -24,11 +24,15 @@ describe('Iron-5 Constitutional State Machine', () => {
         expect(kernel.Lifecycle).toBe('CONSTITUTED');
     });
 
-    test('II. Must Boot to become ACTIVE', () => {
+    test('II. Must Boot to become ACTIVE', async () => {
         // Cannot submit in CONSTITUTED state
-        expect(() => {
-            kernel.submitAttempt('usr', 'proto', {} as any);
-        }).toThrow(/Cannot submit attempt in state CONSTITUTED/);
+        // Cannot submit in CONSTITUTED state
+        try {
+            await kernel.submitAttempt('usr', 'proto', {} as any);
+            throw new Error("Should have thrown");
+        } catch (e: any) {
+            expect(e.message).toMatch(/Cannot submit attempt in state CONSTITUTED/);
+        }
 
         kernel.boot();
         expect(kernel.Lifecycle).toBe('ACTIVE');

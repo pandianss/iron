@@ -1,6 +1,6 @@
 import { GovernanceInterface, ActionBuilder } from './Interface.js';
-import type { Action } from '../L2/State.js';
-import type { KeyPair } from '../L0/Crypto.js';
+import type { Action } from '../kernel-core/L0/Ontology.js';
+import type { KeyPair } from '../kernel-core/L0/Crypto.js';
 
 /**
  * Product 4: Regulated Workflow Guard

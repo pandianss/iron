@@ -1,11 +1,11 @@
 
 import { describe, it, expect } from '@jest/globals';
-import { GovernanceKernel } from '../../Kernel.js';
-import { StateModel, MetricRegistry, MetricType } from '../../L2/State.js';
-import { IdentityManager, AuthorityEngine } from '../../L1/Identity.js';
-import { ProtocolEngine } from '../../L4/Protocol.js';
-import { AuditLog } from '../../L5/Audit.js';
-import { generateKeyPair, signData } from '../../L0/Crypto.js';
+import { GovernanceKernel } from '../../kernel-core/Kernel.js';
+import { StateModel, MetricRegistry, MetricType } from '../../kernel-core/L2/State.js';
+import { IdentityManager, AuthorityEngine } from '../../kernel-core/L1/Identity.js';
+import { ProtocolEngine } from '../../kernel-core/L4/Protocol.js';
+import { AuditLog } from '../../kernel-core/L5/Audit.js';
+import { generateKeyPair, signData } from '../../kernel-core/L0/Crypto.js';
 
 function createHardenedKernel() {
     const registry = new MetricRegistry();
@@ -35,7 +35,7 @@ function createHardenedKernel() {
 
 describe('Phase 5: Adversarial Scenarios (Threat Modeling)', () => {
 
-    it('THREAT-01: Replay Attack (The Xerox Exploit)', () => {
+    it('THREAT-01: Replay Attack (The Xerox Exploit)', async () => {
         const { kernel, identity, authority, registry } = createHardenedKernel();
 
         // Setup Victim
@@ -44,7 +44,7 @@ describe('Phase 5: Adversarial Scenarios (Threat Modeling)', () => {
         identity.register({ id: victim, type: 'ACTOR', status: 'ACTIVE', publicKey, createdAt: '0', identityProof: 'gen' });
 
         registry.register({ id: 'coin', description: 'Coin', type: MetricType.COUNTER, validator: v => v >= 0 });
-        authority.grant('auth-1', 'root', victim, 'TOTAL_CAPACITY', '*', '0', 'GOVERNANCE_SIGNATURE');
+        authority.grant('auth-1', 'root', victim, '*', '*', '0', 'GOVERNANCE_SIGNATURE');
 
         // 1. Create Valid Action
         const actionPayload = { metricId: 'coin', value: 10 };
@@ -62,18 +62,18 @@ describe('Phase 5: Adversarial Scenarios (Threat Modeling)', () => {
         action.signature = signData(data, privateKey);
 
         // 2. Submit First Time -> Success
-        const aid1 = kernel.submitAttempt(victim, 'SYSTEM', action);
-        const res1 = kernel.guardAttempt(aid1);
+        const aid1 = await kernel.submitAttempt(victim, 'SYSTEM', action);
+        const res1 = await kernel.guardAttempt(aid1);
         expect(res1.status).toBe('ACCEPTED');
-        kernel.commitAttempt(aid1, { consume: () => { } } as any);
+        await kernel.commitAttempt(aid1, { consume: () => { } } as any);
 
         // 3. Replay Attack: Resubmit EXACT same action object
         try {
-            const aid2 = kernel.submitAttempt(victim, 'SYSTEM', action);
-            const res2 = kernel.guardAttempt(aid2);
+            const aid2 = await kernel.submitAttempt(victim, 'SYSTEM', action);
+            const res2 = await kernel.guardAttempt(aid2);
 
             if (res2.status === 'ACCEPTED') {
-                kernel.commitAttempt(aid2, { consume: () => { } } as any);
+                await kernel.commitAttempt(aid2, { consume: () => { } } as any);
                 // IF WE GET HERE, REPLAY SUCCEEDED -> VULNERABILITY
                 throw new Error("Vulnerability Detected: Replay Attack Successful");
             }
@@ -83,13 +83,13 @@ describe('Phase 5: Adversarial Scenarios (Threat Modeling)', () => {
         }
     });
 
-    it('THREAT-02: Time Warp (The DeLorean Exploit)', () => {
+    it('THREAT-02: Time Warp (The DeLorean Exploit)', async () => {
         const { kernel, identity, authority, registry } = createHardenedKernel();
         const { publicKey, privateKey } = generateKeyPair();
         const traveler = 'marty';
         identity.register({ id: traveler, type: 'ACTOR', status: 'ACTIVE', publicKey, createdAt: '0', identityProof: 'gen' });
         registry.register({ id: 'flux', description: 'Flux', type: MetricType.GAUGE });
-        authority.grant('auth-2', 'root', traveler, 'TOTAL_CAPACITY', '*', '0', 'GOVERNANCE_SIGNATURE');
+        authority.grant('auth-2', 'root', traveler, '*', '*', '0', 'GOVERNANCE_SIGNATURE');
 
         // Case A: Future Action (Far Future)
         const futureAction = {
@@ -103,8 +103,8 @@ describe('Phase 5: Adversarial Scenarios (Threat Modeling)', () => {
         const data = `${futureAction.actionId}:${futureAction.initiator}:${JSON.stringify(futureAction.payload)}:${futureAction.timestamp}:${futureAction.expiresAt}`;
         futureAction.signature = signData(data, privateKey);
 
-        const aid1 = kernel.submitAttempt(traveler, 'SYSTEM', futureAction);
-        const res1 = kernel.guardAttempt(aid1);
+        const aid1 = await kernel.submitAttempt(traveler, 'SYSTEM', futureAction);
+        const res1 = await kernel.guardAttempt(aid1);
 
         expect(res1.status).toBe('REJECTED');
         expect(res1.reason).toMatch(/Future|Timestamp|Temporal/i);
@@ -115,9 +115,9 @@ describe('Phase 5: Adversarial Scenarios (Threat Modeling)', () => {
         const dataT1 = `${t1.actionId}:${t1.initiator}:${JSON.stringify(t1.payload)}:${t1.timestamp}:${t1.expiresAt}`;
         t1.signature = signData(dataT1, privateKey);
 
-        const aidT1 = kernel.submitAttempt(traveler, 'SYSTEM', t1);
-        kernel.guardAttempt(aidT1);
-        kernel.commitAttempt(aidT1, { consume: () => { } } as any);
+        const aidT1 = await kernel.submitAttempt(traveler, 'SYSTEM', t1);
+        await kernel.guardAttempt(aidT1);
+        await kernel.commitAttempt(aidT1, { consume: () => { } } as any);
 
         // 2. Submit t=Now-5000 (Past relative to State)
         const past = { ...futureAction, actionId: 'past-1', timestamp: (now - 5000).toString() };
@@ -125,23 +125,23 @@ describe('Phase 5: Adversarial Scenarios (Threat Modeling)', () => {
         const dataPast = `${past.actionId}:${past.initiator}:${JSON.stringify(past.payload)}:${past.timestamp}:${past.expiresAt}`;
         past.signature = signData(dataPast, privateKey);
 
-        const aid2 = kernel.submitAttempt(traveler, 'SYSTEM', past);
-        const res2 = kernel.guardAttempt(aid2);
+        const aid2 = await kernel.submitAttempt(traveler, 'SYSTEM', past);
+        const res2 = await kernel.guardAttempt(aid2);
 
         if (res2.status === 'ACCEPTED') {
             // Try Commit
-            expect(() => {
-                kernel.commitAttempt(aid2, { consume: () => { } } as any);
-            }).toThrow(/Monotonicity|Time/i);
+            await expect(async () => {
+                await kernel.commitAttempt(aid2, { consume: () => { } } as any);
+            }).rejects.toThrow(/Monotonicity|Time/i);
         }
     });
 
-    it('THREAT-03: Sybil Flood (The Clone Exploit)', () => {
+    it('THREAT-03: Sybil Flood (The Clone Exploit)', async () => {
         const { kernel, identity } = createHardenedKernel();
         const { publicKey } = generateKeyPair();
         identity.register({ id: 'sybil-master', type: 'ACTOR', status: 'ACTIVE', publicKey, createdAt: '0', identityProof: 'gen' });
 
-        const aid = kernel.submitAttempt('sybil-master', 'SYSTEM', {
+        const aid = await kernel.submitAttempt('sybil-master', 'SYSTEM', {
             actionId: 'spam',
             initiator: 'sybil-master',
             payload: { metricId: 'x', value: 1 },
@@ -150,7 +150,7 @@ describe('Phase 5: Adversarial Scenarios (Threat Modeling)', () => {
             signature: 'garbage'
         });
 
-        const res = kernel.guardAttempt(aid);
+        const res = await kernel.guardAttempt(aid);
         expect(res.status).toBe('REJECTED');
     });
 

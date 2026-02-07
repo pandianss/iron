@@ -20,8 +20,10 @@ export class SQLiteEventStore implements IEventStore {
                 initiator TEXT NOT NULL,
                 status TEXT NOT NULL,
                 timestamp TEXT NOT NULL,
+                expiresAt TEXT,
                 payload TEXT NOT NULL,
                 signature TEXT,
+                reason TEXT,
                 metadata TEXT
             )
         `);
@@ -30,9 +32,9 @@ export class SQLiteEventStore implements IEventStore {
     async append(evidence: Evidence): Promise<void> {
         const stmt = this.db.prepare(`
             INSERT INTO audit_log (
-                evidenceId, previousEvidenceId, actionId, initiator, status, timestamp, payload, signature, metadata
+                evidenceId, previousEvidenceId, actionId, initiator, status, timestamp, expiresAt, payload, signature, reason, metadata
             ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
         `);
 
@@ -46,8 +48,10 @@ export class SQLiteEventStore implements IEventStore {
             evidence.action.initiator,
             evidence.status,
             evidence.action.timestamp,
+            evidence.action.expiresAt || '0',
             payloadStr,
             evidence.action.signature,
+            evidence.reason || null,
             metaStr
         );
     }
@@ -77,10 +81,11 @@ export class SQLiteEventStore implements IEventStore {
                 timestamp: row.timestamp,
                 signature: row.signature,
                 payload: JSON.parse(row.payload),
-                expiresAt: '0', // Not stored in schema currently, defaulting
+                expiresAt: row.expiresAt || '0',
             },
             status: row.status,
-            timestamp: row.timestamp, // Add missing top-level timestamp
+            timestamp: row.timestamp,
+            reason: row.reason || undefined,
             metadata: row.metadata ? JSON.parse(row.metadata) : undefined
         };
     }

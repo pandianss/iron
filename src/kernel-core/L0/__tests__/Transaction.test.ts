@@ -5,7 +5,7 @@ import { StateModel, MetricRegistry, MetricType } from '../../L2/State.js';
 import { IdentityManager, AuthorityEngine } from '../../L1/Identity.js';
 import { ProtocolEngine } from '../../L4/Protocol.js';
 import type { Protocol } from '../../L4/Protocol.js';
-import { Budget } from '../../L0/Kernel.js';
+import { Budget, BudgetType } from '../../L0/Primitives.js';
 
 describe('Transaction Kernel', () => {
     test('should commit atomic multi-metric transitions', async () => {
@@ -19,7 +19,7 @@ describe('Transaction Kernel', () => {
             id: 'alice',
             publicKey: 'pubkey',
             status: 'ACTIVE' as const,
-            type: 'INDIVIDUAL' as any,
+            type: 'ACTOR' as any,
             createdAt: '0:0',
             identityProof: 'proof'
         };
@@ -74,7 +74,7 @@ describe('Transaction Kernel', () => {
         const chain = state.getSnapshotChain();
         expect(chain.length).toBe(2); // Genesis + 1 Atomic Action
 
-        const snapshot = chain[1];
+        const snapshot = chain[1]!;
         // Use 'as any' to bypass strict key checks if KernelState is typed generically
         const sState = snapshot.state as any;
         expect(sState.metrics['wealth'].value).toBe(100);

@@ -3,10 +3,11 @@ import { IdentityManager, AuthorityEngine } from './L1/Identity.js';
 import { ProtocolEngine } from './L4/Protocol.js';
 import type { Mutation, Action, ActionPayload, KernelState, ActionID, CapacityID, JurisdictionID, EntityID } from './L0/Ontology.js';
 import { AuditLog } from './L5/Audit.js';
-import { SignatureGuard, ScopeGuard, TimeGuard, BudgetGuard, InvariantGuard, ReplayGuard } from './L0/Guards.js';
+import { SignatureGuard, ScopeGuard, TimeGuard, BudgetGuard, InvariantGuard, ReplayGuard, IrreversibilityGuard, MultiSigGuard } from './L0/Guards.js';
 import { checkInvariants } from './L0/Invariants.js';
 import type { Rejection } from './L0/Invariants.js';
-import { Budget, LogicalTimestamp } from './L0/Kernel.js';
+import { LogicalTimestamp } from './L0/Kernel.js';
+import { Budget } from './L0/Primitives.js';
 import { GuardRegistry } from './L0/GuardRegistry.js';
 import { PluginRegistry } from './L0/PluginRegistry.js';
 import { ErrorCode, KernelError } from './Errors.js';
@@ -60,6 +61,8 @@ export class GovernanceKernel {
         this.guards.register('TIME', TimeGuard);
         this.guards.register('REPLAY', ReplayGuard);
         this.guards.register('BUDGET', BudgetGuard);
+        this.guards.register('IRREVERSIBILITY', IrreversibilityGuard);
+        this.guards.register('MULTISIG', MultiSigGuard);
 
         this.transition('CONSTITUTED');
     }
@@ -181,7 +184,7 @@ export class GovernanceKernel {
         // 3. Scope & Jurisdiction
         const scopeResult = this.guards.evaluate('SCOPE', {
             actor: attempt.initiator,
-            capability: attempt.action.payload.metricId,
+            capability: `METRIC.WRITE:${attempt.action.payload.metricId}`,
             engine: this.authority,
             context: {
                 time: attempt.action.timestamp,
@@ -211,7 +214,26 @@ export class GovernanceKernel {
             return { status: 'REJECTED', reason: rejection.message || "Replay Detected" };
         }
 
-        // 5. Protocol Binding
+        // 5. Irreversibility Guard (Continuity Bias)
+        if ((attempt.action.payload as any).irreversible) {
+            const irrResult = this.guards.evaluate('IRREVERSIBILITY', {
+                action: attempt.action,
+                requiredApprovals: 2, // Constitutional standard
+                providedApprovals: 1 // Default for single action
+            });
+
+            if (!irrResult.ok) {
+                const rejection: Rejection = {
+                    code: ErrorCode.IRREVERSIBILITY_VIOLATION,
+                    invariantId: 'INV-CONT-01',
+                    message: (irrResult as any).violation
+                };
+                await this.reject(attempt, rejection);
+                return { status: 'REJECTED', reason: (irrResult as any).violation };
+            }
+        }
+
+        // 6. Protocol Binding
         if (attempt.protocolId !== 'SYSTEM' && attempt.protocolId !== 'ROOT') {
             if (!this.protocols.isRegistered(attempt.protocolId)) {
                 const rejection: Rejection = {
@@ -336,22 +358,31 @@ export class GovernanceKernel {
     }
 
     // Article V: Emergency Override (Article II.11)
-    public async override(action: Action, justification: string): Promise<Commit> {
+    public async override(action: Action, justification: string, signatures?: string[]): Promise<Commit> {
         if (this.lifecycle !== 'ACTIVE') throw new Error("Kernel is not ACTIVE");
 
         if (!this.authority.authorized(action.initiator, 'GOVERNANCE:OVERRIDE')) {
             throw new Error("Override Violation: Actor is not authorized for GOVERNANCE:OVERRIDE");
         }
 
+        // NEW: MultiSig Enforcement for Overrides
+        const multiSigResult = this.guards.evaluate('MULTISIG', {
+            action,
+            requiredSignatures: 3, // Const-II-11 Requirement
+            providedSignatures: signatures || [action.signature],
+            authorizedSigners: ['root.1', 'root.2', 'root.3', 'root.4', 'root.5'],
+            identityManager: this.identity
+        });
+
+        if (!multiSigResult.ok) {
+            throw new Error(`Override Blocked: ${(multiSigResult as any).violation}`);
+        }
+
         const aid = await this.submitAttempt(action.initiator, 'ROOT', action);
         const attempt = this.attempts.get(aid)!;
 
-        // Signature Guard - Mandatory (Physics of Power)
-        const sigResult = SignatureGuard({ intent: attempt.action as any, manager: this.identity as any });
-        if (!sigResult.ok) throw new Error(`Override Violation: Invalid Identity Signature`);
-
         attempt.status = 'ACCEPTED';
-        await this.audit.append(action, 'SUCCESS', `OVERRIDE: ${justification} `);
+        await this.audit.append(action, 'SUCCESS', `OVERRIDE: ${justification}`);
 
         return await this.commitAttempt(aid, new Budget('RISK' as any, 1000));
     }
@@ -365,7 +396,7 @@ export class GovernanceKernel {
         });
 
         // Automatic Revocation (Product 1 requirement)
-        if (rejection.code === 'REVOKED_ENTITY' || rejection.code === 'SIGNATURE_INVALID') {
+        if (rejection.code === 'REVOKED_ENTITY' || rejection.code === 'SIGNATURE_INVALID' || rejection.code === ErrorCode.OVERSCOPE_ATTEMPT) {
             console.log(`[Iron] Critical Breach(${rejection.code}).Triggering Automatic Revocation for ${attempt.initiator}`);
             try {
                 this.identity.revoke(attempt.initiator, '0:0');

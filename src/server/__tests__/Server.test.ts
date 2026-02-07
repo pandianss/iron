@@ -33,6 +33,12 @@ describe('M3: Application Foundation', () => {
 
     beforeAll(async () => {
         // Start Server (using in-memory DB or test file would be better, but implementing cleanup here)
+        // Clean up previous test artifacts
+        const fs = await import('fs');
+        if (fs.existsSync('iron.db')) fs.unlinkSync('iron.db');
+        // if (fs.existsSync('audit.json')) fs.unlinkSync('audit.json'); // SQLite uses iron.db
+
+        // Start Server
         server = new IronServer(PORT);
         await server.start();
         // Wait briefly for boot
@@ -51,6 +57,7 @@ describe('M3: Application Foundation', () => {
         // Or we use the internal kernel ref to seed it for the test.
 
         const kernel = (server as any).kernel;
+        kernel.Registry.register({ id: 'test.api.counter', description: 'Test', type: 'GAUGE' });
         kernel.identity.register({
             id: 'alice',
             publicKey: aliceKey.publicKey,
@@ -85,7 +92,7 @@ describe('M3: Application Foundation', () => {
 
     test('M3.1 Persistence: Audit log contains the action', async () => {
         const audit = await request(`${API_URL}/audit`, { method: 'GET' });
-        const entry = audit.find((e: any) => e.action.actionId.startsWith('act-api-'));
+        const entry = audit.find((e: any) => e.action.actionId.startsWith('act-api-') && e.status === 'SUCCESS');
         expect(entry).toBeDefined();
         expect(entry.status).toBe('SUCCESS');
     });

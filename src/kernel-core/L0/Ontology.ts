@@ -100,6 +100,7 @@ export interface Mutation {
 
 export interface ActionPayload extends Mutation {
     protocolId?: string;
+    irreversible?: boolean; // NEW: Flag for high-consequence actions
 }
 
 export type ActionID = string;
@@ -145,12 +146,13 @@ export interface Override {
 // --- 12. Evidence ---
 export type EvidenceID = string;
 export interface Evidence {
-    id: EvidenceID;
-    linkedAction: ActionID;
-    authorityTrace: string;
-    protocolTrace: string;
-    stateDiff: string;
-    immutabilityProof: string;
+    evidenceId: EvidenceID; // The identifying hash
+    previousEvidenceId: string; // Chain linkage
+    action: Action; // LinkedAction
+    status: 'SUCCESS' | 'FAILURE' | 'ATTEMPT' | 'REJECT' | 'ABORTED' | 'ACCEPTED';
+    reason?: string;
+    metadata?: Record<string, any>; // Structured diagnostics (Product 2)
+    timestamp: string; // Logical Timestamp: "time:logical"
 }
 
 // --- Kernel Lifecycle ---

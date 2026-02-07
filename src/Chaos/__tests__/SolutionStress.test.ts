@@ -1,11 +1,11 @@
 
 import { describe, test, expect, beforeEach } from '@jest/globals';
-import { GovernanceKernel } from '../../Kernel.js';
-import { StateModel, MetricRegistry, MetricType } from '../../L2/State.js';
-import { IdentityManager, AuthorityEngine } from '../../L1/Identity.js';
-import { ProtocolEngine } from '../../L4/Protocol.js';
-import { AuditLog } from '../../L5/Audit.js';
-import { generateKeyPair } from '../../L0/Crypto.js';
+import { GovernanceKernel } from '../../kernel-core/Kernel.js';
+import { StateModel, MetricRegistry, MetricType } from '../../kernel-core/L2/State.js';
+import { IdentityManager, AuthorityEngine } from '../../kernel-core/L1/Identity.js';
+import { ProtocolEngine } from '../../kernel-core/L4/Protocol.js';
+import { AuditLog } from '../../kernel-core/L5/Audit.js';
+import { generateKeyPair } from '../../kernel-core/L0/Crypto.js';
 import { Fuzzer } from '../Fuzzer.js';
 
 // Solutions

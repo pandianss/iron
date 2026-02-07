@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, jest } from '@jest/globals';
 import { ActionBuilder } from '../Interface.js';
-import { signData, generateKeyPair, hash } from '../../L0/Crypto.js';
+import { signData, generateKeyPair, hash } from '../../kernel-core/L0/Crypto.js';
 
 describe('Human Interface (VI.1 Consent)', () => {
     const keys = generateKeyPair();

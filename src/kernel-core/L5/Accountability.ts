@@ -43,8 +43,8 @@ export class AccountabilityEngine {
         this.slas.push(sla);
     }
 
-    public evaluate(entityId: EntityID, time: LogicalTimestamp) {
-        this.slas.forEach(sla => {
+    public async evaluate(entityId: EntityID, time: LogicalTimestamp) {
+        for (const sla of this.slas) {
             // 1. Check Historical Compliance (The Past)
             const isCompliant = this.tracker.checkCompliance(sla);
 
@@ -56,7 +56,7 @@ export class AccountabilityEngine {
                 // To check risk, we need to simulate.
                 // Default: Simulate "Do Nothing" (Inertia risk) 
 
-                const risk = this.riskEngine.simulate(
+                const risk = await this.riskEngine.simulate(
                     this.state,
                     null,
                     10,
@@ -79,28 +79,28 @@ export class AccountabilityEngine {
 
             if (isCompliant && !isRisky) {
                 // Safe and Compliant
-                this.payout(sla.incentiveAmount, entityId, time);
+                await this.payout(sla.incentiveAmount, entityId, time);
             } else {
                 // Penalties
                 if (!isCompliant) {
-                    this.penalize(sla.penaltyAmount, entityId, time, "Compliance Breach");
+                    await this.penalize(sla.penaltyAmount, entityId, time, "Compliance Breach");
                 }
                 if (isRisky) {
                     // Risk Penalty (Pre-crime)
-                    this.penalize(sla.penaltyAmount * 2, entityId, time, `High Risk Detected (${(riskProb * 100).toFixed(0)}%)`);
+                    await this.penalize(sla.penaltyAmount * 2, entityId, time, `High Risk Detected (${(riskProb * 100).toFixed(0)}%)`);
                 }
             }
-        });
+        }
     }
 
-    private payout(amount: number, entityId: EntityID, time: LogicalTimestamp) {
+    private async payout(amount: number, entityId: EntityID, time: LogicalTimestamp) {
         const current = Number(this.state.get('system.rewards') || 0);
-        this.state.applyTrusted({ metricId: 'system.rewards', value: current + amount }, time.toString(), entityId);
+        await this.state.applyTrusted([{ metricId: 'system.rewards', value: current + amount }], time.toString(), entityId, undefined, 'acc-payout');
     }
 
-    private penalize(amount: number, entityId: EntityID, time: LogicalTimestamp, reason: string) {
+    private async penalize(amount: number, entityId: EntityID, time: LogicalTimestamp, reason: string) {
         const current = Number(this.state.get('system.rewards') || 0);
-        this.state.applyTrusted({ metricId: 'system.rewards', value: current - amount }, time.toString(), entityId);
+        await this.state.applyTrusted([{ metricId: 'system.rewards', value: current - amount }], time.toString(), entityId, undefined, 'acc-penalty');
     }
 }
 

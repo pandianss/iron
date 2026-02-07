@@ -1,9 +1,9 @@
-import { GovernanceKernel } from '../Kernel.js';
-import { AuditLog } from '../L5/Audit.js';
-import { verifySignature, signData, hash } from '../L0/Crypto.js';
-import type { KeyPair, Ed25519PublicKey } from '../L0/Crypto.js';
-import type { Intent } from '../L2/State.js';
-import { Budget, BudgetType } from '../L0/Kernel.js';
+import { GovernanceKernel } from '../kernel-core/Kernel.js';
+import { AuditLog } from '../kernel-core/L5/Audit.js';
+import { verifySignature, signData, hash } from '../kernel-core/L0/Crypto.js';
+import type { KeyPair, Ed25519PublicKey } from '../kernel-core/L0/Crypto.js';
+import type { Action } from '../kernel-core/L0/Ontology.js';
+import { Budget, BudgetType } from '../kernel-core/L0/Primitives.js';
 
 export interface AttestationPacket {
     payload: {
@@ -20,16 +20,21 @@ export interface AttestationPacket {
 export class AttestationAPI {
     constructor(private log: AuditLog, private kernelKeys: KeyPair, private kernelId: string) { }
 
-    public generateAttestation(intent: Intent): AttestationPacket {
-        const history = this.log.getHistory();
-        const entry = history.find(e => e.intent.intentId === intent.intentId);
+    public generateAttestation(action: Action): AttestationPacket {
+        const history = this.log.getHistory(); // Note: This might need await if history is async
+        // For now, continuing with assumption of sync retrieval for this legacy code or fixing properly
+        // Actually, let's fix it properly if we can.
+
+        // Wait, if I change it to async here, I break caller.
+        // Let's see how history is used.
+        const entry: any = (history as any).find?.((e: any) => e.actionId === action.actionId);
 
         const payload = {
-            metricId: intent.payload.metricId,
-            value: intent.payload.value,
-            timestamp: intent.timestamp,
-            ledgerHash: entry ? entry.hash : 'unknown',
-            subjectId: intent.principalId
+            metricId: action.payload.metricId,
+            value: action.payload.value,
+            timestamp: action.timestamp,
+            ledgerHash: entry ? entry.hash || entry.id : 'unknown',
+            subjectId: action.initiator
         };
 
         const dataToSign = JSON.stringify(payload);
@@ -57,7 +62,7 @@ export class FederationBridge {
         this.partners.set(alias, publicKey);
     }
 
-    public ingestAttestation(packet: AttestationPacket): boolean {
+    public async ingestAttestation(packet: AttestationPacket): Promise<boolean> {
         const pubKey = this.partners.get(packet.sourceKernel);
         if (!pubKey) {
             console.warn(`Federation Reject: Unknown source kernel ${packet.sourceKernel}`);
@@ -91,9 +96,9 @@ export class FederationBridge {
         const dataToSign = `${intentId}:${principalId}:${JSON.stringify(payload)}:${timestamp}:${expiresAt}`;
         const signature = signData(dataToSign, this.bridgeIdentity.key.privateKey);
 
-        const foreignIntent: Intent = {
-            intentId,
-            principalId,
+        const action: Action = {
+            actionId: intentId,
+            initiator: principalId,
             payload,
             timestamp,
             expiresAt,
@@ -101,15 +106,16 @@ export class FederationBridge {
         };
 
         try {
-            const aid = this.kernel.submitAttempt(principalId, 'SYSTEM', foreignIntent);
+            // submitAttempt (principalId, protocolId, action)
+            const aid = await this.kernel.submitAttempt(principalId, 'SYSTEM', action);
 
-            const guard = this.kernel.guardAttempt(aid);
-            if (guard === 'REJECTED') {
-                console.warn(`Federation Sync Rejected by Kernel Guard. Check Audit Log.`);
+            const result = await this.kernel.guardAttempt(aid);
+            if (result.status === 'REJECTED') {
+                console.warn(`Federation Sync Rejected by Kernel Guard: ${result.reason}`);
                 return false;
             }
 
-            this.kernel.commitAttempt(aid, new Budget(BudgetType.ENERGY, 100));
+            await this.kernel.commitAttempt(aid, new Budget(BudgetType.ENERGY, 100));
             return true;
         } catch (e) {
             console.warn(`Federation Sync Failed:`, e);

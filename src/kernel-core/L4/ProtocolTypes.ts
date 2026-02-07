@@ -25,6 +25,10 @@ export interface Protocol extends ProtocolPrimitive {
     execution: any[];
     preconditions: any[];
     originPluginId?: string; // If registered via plugin
+
+    // Behavioral Constitution (Friction Layer)
+    proposedAt?: string;
+    ratifiedAt?: string;
 }
 
 export interface Rule {
@@ -75,7 +79,9 @@ export const ProtocolSchema = z.object({
     strict: z.boolean().optional(),
     originPluginId: z.string().optional(),
     execution: z.array(RuleSchema),
-    preconditions: z.array(PredicateSchema)
+    preconditions: z.array(PredicateSchema),
+    proposedAt: z.string().optional(),
+    ratifiedAt: z.string().optional()
 });
 
 export type ProtocolDraft = z.infer<typeof ProtocolSchema>; // Runtime type from schema

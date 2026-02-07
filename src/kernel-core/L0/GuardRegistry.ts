@@ -4,7 +4,7 @@ import { PluginContext } from './PluginContext.js';
 import { StateModel } from '../L2/State.js';
 import { AuditLog } from '../L5/Audit.js';
 
-export type GuardType = 'INVARIANT' | 'SIGNATURE' | 'SCOPE' | 'TIME' | 'BUDGET' | 'CONFLICT' | 'REPLAY';
+export type GuardType = 'INVARIANT' | 'SIGNATURE' | 'SCOPE' | 'TIME' | 'BUDGET' | 'CONFLICT' | 'REPLAY' | 'IRREVERSIBILITY' | 'MULTISIG';
 
 interface RegisteredGuard {
     name: string;

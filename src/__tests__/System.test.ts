@@ -1,5 +1,5 @@
-import { DeterministicTime, Budget } from '../kernel-core/L0/Kernel.js';
-import { BudgetType } from '../kernel-core/L0/Kernel.js';
+import { DeterministicTime } from '../kernel-core/L0/Kernel.js';
+import { Budget, BudgetType } from '../kernel-core/L0/Primitives.js';
 import { generateKeyPair } from '../kernel-core/L0/Crypto.js';
 import type { KeyPair } from '../kernel-core/L0/Crypto.js';
 import { IdentityManager, AuthorityEngine } from '../kernel-core/L1/Identity.js';
@@ -114,7 +114,7 @@ describe('Iron Operationalization (Kernel & Guards)', () => {
             execution: [{ type: 'MUTATE_METRIC', metricId: 'fan', mutation: 1 }]
         };
         const id1 = protocol.propose(p1);
-        protocol.ratify(id1, 'GOV');
+        protocol.ratify(id1, 'TRUSTED');
         protocol.activate(id1);
 
         // Register P2: Controls 'fan' (Conflict)
@@ -133,7 +133,7 @@ describe('Iron Operationalization (Kernel & Guards)', () => {
         };
 
         const id2 = protocol.propose(p2);
-        protocol.ratify(id2, 'GOV');
+        protocol.ratify(id2, 'GOVERNANCE_SIGNATURE');
         protocol.activate(id2);
 
 

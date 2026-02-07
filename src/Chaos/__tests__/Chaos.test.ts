@@ -1,11 +1,11 @@
 
 import { describe, it, expect, jest } from '@jest/globals';
-import { GovernanceKernel } from '../../Kernel.js';
-import { StateModel, MetricRegistry } from '../../L2/State.js';
-import { IdentityManager, AuthorityEngine } from '../../L1/Identity.js';
-import { ProtocolEngine } from '../../L4/Protocol.js';
-import { AuditLog } from '../../L5/Audit.js';
-import { generateKeyPair } from '../../L0/Crypto.js';
+import { GovernanceKernel } from '../../kernel-core/Kernel.js';
+import { StateModel, MetricRegistry, MetricType } from '../../kernel-core/L2/State.js';
+import { IdentityManager, AuthorityEngine } from '../../kernel-core/L1/Identity.js';
+import { ProtocolEngine } from '../../kernel-core/L4/Protocol.js';
+import { AuditLog } from '../../kernel-core/L5/Audit.js';
+import { generateKeyPair } from '../../kernel-core/L0/Crypto.js';
 import { Fuzzer } from '../Fuzzer.js';
 import { IronWalletInterface } from '../../Solutions/IronWallet/Interface.js';
 
@@ -55,14 +55,14 @@ describe('Phase 5: Chaos Engineering (System Stability)', () => {
         expect(kernel.Lifecycle).toBe('ACTIVE');
 
         // Audit Log should contain evidence of attacks (mostly REJECTED)
-        const history = auditLog.getHistory();
+        const history = await auditLog.getHistory();
         console.log(`[Chaos] Audit Log Size: ${history.length}`);
 
         // At least some attacks should have happened
         expect(history.length).toBeGreaterThan(0);
 
         // Verify State Integrity (Merkle Chain still intact)
-        expect(state.verifyIntegrity()).toBe(true);
-        expect(auditLog.verifyIntegrity()).toBe(true);
+        expect(await state.verifyIntegrity()).toBe(true);
+        expect(await auditLog.verifyIntegrity()).toBe(true);
     }, 20000); // 20s timeout
 });

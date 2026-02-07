@@ -32,6 +32,7 @@ describe('Iron Habit: System Lifecycle (Discipline)', () => {
         // 1. Start Discipline (Protocols Active)
         await habit.startDiscipline();
 
+        // Initialize System
         // 2. Initial State (1 Rest Token)
         const ev = 'genesis-ev';
         await state.applyTrusted([{ metricId: 'user.gamification.rest_tokens', value: 1 }], Date.now().toString(), 'system', 'tx0', ev);

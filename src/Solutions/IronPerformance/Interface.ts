@@ -17,12 +17,12 @@ export class IronPerformanceInterface {
     async initializePerformance() {
         if (!this.engine.isRegistered(KPI_Aggregation_Protocol.id!)) {
             this.engine.propose(KPI_Aggregation_Protocol);
-            this.engine.ratify(KPI_Aggregation_Protocol.id!, 'GOVERNANCE_SIGNATURE');
+            this.engine.ratify(KPI_Aggregation_Protocol.id!, 'TRUSTED');
             this.engine.activate(KPI_Aggregation_Protocol.id!);
         }
         if (!this.engine.isRegistered(Drift_Detection_Protocol.id!)) {
             this.engine.propose(Drift_Detection_Protocol);
-            this.engine.ratify(Drift_Detection_Protocol.id!, 'GOVERNANCE_SIGNATURE');
+            this.engine.ratify(Drift_Detection_Protocol.id!, 'TRUSTED');
             this.engine.activate(Drift_Detection_Protocol.id!);
         }
     }

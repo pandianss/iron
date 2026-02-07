@@ -5,6 +5,7 @@ import { IdentityManager, AuthorityEngine } from '../../../kernel-core/L1/Identi
 import { StateModel, MetricRegistry } from '../../../kernel-core/L2/State.js';
 import { ProtocolEngine } from '../../../kernel-core/L4/Protocol.js';
 import { AuditLog } from '../../../kernel-core/L5/Audit.js';
+import { Budget } from '../../../kernel-core/L0/Primitives.js';
 import { KernelPlatform } from '../../../Platform/KernelPlatform.js';
 import type { Command } from '../../../Platform/KernelPlatform.js';
 import { WalletService } from '../WalletService.js';
@@ -28,7 +29,7 @@ describe('Stratum II: Platform & Product Integration', () => {
 
         // Install Budget Protocol (re-used for wallet spending for now)
         protos.propose(BudgetProtocol);
-        protos.ratify(BudgetProtocol.id!, 'GENESIS_SIG');
+        protos.ratify(BudgetProtocol.id!, 'TRUSTED');
         protos.activate(BudgetProtocol.id!);
 
         // Register System & User Identity in Kernel

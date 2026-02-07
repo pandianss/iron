@@ -19,7 +19,7 @@ describe('L5 Accountability Engine (Risk Awareness)', () => {
     const auth = {
         id: 'user1',
         publicKey: 'key',
-        type: 'INDIVIDUAL' as const,
+        type: 'ACTOR' as const,
         alive: true,
         revoked: false,
         scopeOf: new CapabilitySet(['*']),
@@ -31,8 +31,22 @@ describe('L5 Accountability Engine (Risk Awareness)', () => {
         const audit = new AuditLog();
         registry = new MetricRegistry();
         identity = new IdentityManager();
-        identity.register(auth);
-        identity.register({ id: 'sys', publicKey: 'sys', type: 'AGENT', scopeOf: new CapabilitySet(['*']), parents: [], createdAt: '0:0', isRoot: true });
+        identity.register({
+            ...auth,
+            identityProof: 'TEST_KEY',
+            status: 'ACTIVE'
+        });
+        identity.register({
+            id: 'sys',
+            publicKey: 'sys',
+            type: 'SYSTEM',
+            scopeOf: new CapabilitySet(['*']),
+            parents: [],
+            createdAt: '0:0',
+            isRoot: true,
+            identityProof: 'ROOT_PROOF',
+            status: 'ACTIVE'
+        });
 
         state = new StateModel(audit, registry, identity);
         const protocol = new ProtocolEngine(state);
@@ -46,13 +60,13 @@ describe('L5 Accountability Engine (Risk Awareness)', () => {
         registry.register({ id: 'system.rewards', description: '', type: MetricType.GAUGE }); // Output metric for rewards
     });
 
-    test('Should penalize purely based on Future Risk (Pre-crime)', () => {
-        // Setup: Current state is OK, but trending dangerously (Leverage increasing)
-        // 1. Setup State: Leverage = 80 (Max is 100).
-        // 2. Trend: Increasing by 5 per tick.
-        state.applyTrusted({ metricId: 'leverage', value: 70 }, '0:0', 'sys');
-        state.applyTrusted({ metricId: 'leverage', value: 75 }, '1:0', 'sys');
-        state.applyTrusted({ metricId: 'leverage', value: 80 }, '2:0', 'sys'); // Current
+    test('Should penalize purely based on Future Risk (Pre-crime)', async () => {
+        // 3. Define SLA: Max 100. Risk Tolerance: 10% prob of failure.
+        // Setup State: Leverage = 80 (Max is 100).
+        // Trend: Increasing by 5 per tick.
+        await state.applyTrusted([{ metricId: 'leverage', value: 70 }], '0:0', 'sys', undefined, 'test-val');
+        await state.applyTrusted([{ metricId: 'leverage', value: 75 }], '1:0', 'sys', undefined, 'test-val');
+        await state.applyTrusted([{ metricId: 'leverage', value: 80 }], '2:0', 'sys', undefined, 'test-val'); // Current
 
         // 3. Define SLA: Max 100. Risk Tolerance: 10% prob of failure.
         const safeLeverageSLA: SLA = {
@@ -72,7 +86,7 @@ describe('L5 Accountability Engine (Risk Awareness)', () => {
         // Monte Carlo should detect ~100% failure prob.
         // Even though current (80) < Max (100), penalty should be applied due to Risk.
 
-        acc.evaluate(auth, LogicalTimestamp.fromString('3:0'));
+        await acc.evaluate(auth.id, LogicalTimestamp.fromString('3:0'));
 
         const rewards = state.get('system.rewards');
         console.log("Rewards after risk check:", rewards);
@@ -91,9 +105,9 @@ describe('L5 Accountability Engine (Risk Awareness)', () => {
         expect(rewards).toBe(-100);
     });
 
-    test('Should payout if safe', () => {
-        state.applyTrusted({ metricId: 'leverage', value: 10 }, '0:0', 'sys');
-        state.applyTrusted({ metricId: 'leverage', value: 10 }, '1:0', 'sys');
+    test('Should payout if safe', async () => {
+        await state.applyTrusted([{ metricId: 'leverage', value: 10 }], '0:0', 'sys', undefined, 'test-val');
+        await state.applyTrusted([{ metricId: 'leverage', value: 10 }], '1:0', 'sys', undefined, 'test-val');
 
         const safeLeverageSLA: SLA = {
             id: 'lev-sla',
@@ -106,7 +120,7 @@ describe('L5 Accountability Engine (Risk Awareness)', () => {
         };
         acc.registerSLA(safeLeverageSLA);
 
-        acc.evaluate(auth, LogicalTimestamp.fromString('2:0'));
+        await acc.evaluate(auth.id, LogicalTimestamp.fromString('2:0'));
         expect(state.get('system.rewards')).toBe(10);
     });
 });

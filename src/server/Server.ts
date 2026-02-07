@@ -39,7 +39,7 @@ export class IronServer {
     }
 
     public async start() {
-        await this.boot();
+        return await this.boot();
     }
 
     private async boot() {
@@ -52,7 +52,7 @@ export class IronServer {
         this.kernel.boot();
         console.log("IronServer: Kernel Active.");
 
-        this.app.listen(this.port, () => {
+        return this.app.listen(this.port, () => {
             console.log(`IronServer: Listening on port ${this.port}`);
         });
     }

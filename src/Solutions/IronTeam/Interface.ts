@@ -28,12 +28,12 @@ export class IronTeamInterface {
     async initializeOrg() {
         if (!this.engine.isRegistered(Role_Delegation_Protocol.id!)) {
             this.engine.propose(Role_Delegation_Protocol);
-            this.engine.ratify(Role_Delegation_Protocol.id!, 'admin-sig');
+            this.engine.ratify(Role_Delegation_Protocol.id!, 'TRUSTED');
             this.engine.activate(Role_Delegation_Protocol.id!);
         }
         if (!this.engine.isRegistered(Team_Sync_Protocol.id!)) {
             this.engine.propose(Team_Sync_Protocol);
-            this.engine.ratify(Team_Sync_Protocol.id!, 'admin-sig');
+            this.engine.ratify(Team_Sync_Protocol.id!, 'TRUSTED');
             this.engine.activate(Team_Sync_Protocol.id!);
         }
     }

@@ -1,16 +1,16 @@
-
 import { ProtocolEngine } from '../Protocol.js';
 import { StateModel, MetricRegistry, MetricType } from '../../L2/State.js';
 import { AuditLog } from '../../L5/Audit.js';
 import { IdentityManager } from '../../L1/Identity.js';
 import type { Protocol } from '../ProtocolTypes.js';
+import { LogicalTimestamp } from '../../L0/Kernel.js';
 
 describe('L4 Deep Audit: Adversary Suite', () => {
     let state: StateModel;
     let engine: ProtocolEngine;
     let registry: MetricRegistry;
 
-    beforeEach(() => {
+    beforeEach(async () => {
         registry = new MetricRegistry();
         registry.register({ id: 'test.metric', type: MetricType.COUNTER, description: 'Test' });
 
@@ -19,7 +19,7 @@ describe('L4 Deep Audit: Adversary Suite', () => {
         engine = new ProtocolEngine(state);
 
         // Seed State
-        state.applyTrusted({ metricId: 'test.metric', value: 100 }, '0:0');
+        await state.applyTrusted([{ metricId: 'test.metric', value: 100 }], '0:0', 'sys', undefined, 'init');
     });
 
     test('Exploit 1: Operator Bypass (Invalid Operator checks)', () => {
@@ -32,6 +32,10 @@ describe('L4 Deep Audit: Adversary Suite', () => {
             category: "Risk",
             lifecycle: "ACTIVE", // Force ACTIVE to skip lifecycle check
             strict: true,
+            triggerConditions: [],
+            authorizedCapacities: [],
+            stateTransitions: [],
+            completionConditions: [],
             execution: [{ type: "MUTATE_METRIC", metricId: "test.metric", mutation: -100 }],
             preconditions: [
                 {
@@ -47,7 +51,7 @@ describe('L4 Deep Audit: Adversary Suite', () => {
         // to see if the RUNTIME engine is robust.
         (engine as any).protocols.set(attackProto.id, attackProto);
 
-        const mutations = engine.evaluate('0:1' as LogicalTimestamp); // Cast timestamp for test
+        const mutations = engine.evaluate(LogicalTimestamp.fromString('0:1'));
 
         // If vulnerability exists, mutations will be generated despite the impossible threshold (or invalid op)
         // If robust, it should either throw or return empty.
@@ -62,6 +66,10 @@ describe('L4 Deep Audit: Adversary Suite', () => {
             version: "1.0.0",
             category: "Risk",
             lifecycle: "ACTIVE",
+            triggerConditions: [],
+            authorizedCapacities: [],
+            stateTransitions: [],
+            completionConditions: [],
             execution: [{ type: "MUTATE_METRIC", metricId: "test.metric", mutation: -50 }],
             preconditions: [
                 {
@@ -79,7 +87,7 @@ describe('L4 Deep Audit: Adversary Suite', () => {
         // Logic: if (!(current > thresh)) return false.
         // !(False) is True. Returns False.
         // So this should be SAFE (Fail-Closed).
-        const mutations = engine.evaluate('0:1' as LogicalTimestamp);
+        const mutations = engine.evaluate(LogicalTimestamp.fromString('0:1'));
         expect(mutations.length).toBe(0);
     });
 
@@ -90,12 +98,16 @@ describe('L4 Deep Audit: Adversary Suite', () => {
             version: "1.0.0",
             category: "Intent",
             lifecycle: "PROPOSED",
+            triggerConditions: [],
+            authorizedCapacities: [],
+            stateTransitions: [],
+            completionConditions: [],
             execution: [{ type: "MUTATE_METRIC", metricId: "test.metric", mutation: 1 }],
             preconditions: [{ type: "ALWAYS" }]
         };
 
         (engine as any).protocols.set(proto.id, proto);
-        const mutations = engine.evaluate('0:1' as LogicalTimestamp);
+        const mutations = engine.evaluate(LogicalTimestamp.fromString('0:1'));
 
         // Should NOT execute
         expect(mutations.length).toBe(0);
@@ -114,6 +126,6 @@ describe('L4 Deep Audit: Adversary Suite', () => {
         (engine as any).protocols.set(attackProto.id, attackProto);
 
         // This might arguably fail or pollute. We expect safe handling (no crash, no pollution).
-        expect(() => engine.evaluate('0:1' as any)).not.toThrow();
+        expect(() => engine.evaluate(LogicalTimestamp.fromString('0:1'))).not.toThrow();
     });
 });

@@ -25,7 +25,7 @@ export class TrendAnalyzer {
             return { x: i, y: Number(h.value) }; // Assuming numeric metric
         });
 
-        if (isNaN(points[0].y)) return null; // Non-numeric metric
+        if (points.length === 0 || isNaN(points[0]!.y)) return null; // Non-numeric metric
 
         // y = mx + c
         const n = points.length;

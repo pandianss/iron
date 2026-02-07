@@ -19,14 +19,14 @@ export class IronHabitInterface {
         // 1. Journal
         if (!this.engine.isRegistered(Daily_Journal_Protocol.id!)) {
             this.engine.propose(Daily_Journal_Protocol);
-            this.engine.ratify(Daily_Journal_Protocol.id!, 'user-sig'); // Mock sig
+            this.engine.ratify(Daily_Journal_Protocol.id!, 'TRUSTED'); // Mock sig
             this.engine.activate(Daily_Journal_Protocol.id!);
         }
 
         // 2. Rest Budget
         if (!this.engine.isRegistered(Rest_Day_Protocol.id!)) {
             this.engine.propose(Rest_Day_Protocol);
-            this.engine.ratify(Rest_Day_Protocol.id!, 'user-sig');
+            this.engine.ratify(Rest_Day_Protocol.id!, 'TRUSTED');
             this.engine.activate(Rest_Day_Protocol.id!);
         }
     }

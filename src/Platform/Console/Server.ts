@@ -68,9 +68,9 @@ export class ConsoleServer {
             res.json({ ok: true, count: reports.length, data: reports });
         });
 
-        this.app.post('/api/studio/validate', (req, res) => {
+        this.app.post('/api/studio/validate', async (req, res) => {
             // Lazy load to avoid circular deps if possible, or just import at top
-            const { ProtocolSchema } = require('../../../kernel-core/L4/ProtocolTypes.js');
+            const { ProtocolSchema } = await import('../../kernel-core/L4/ProtocolTypes.js');
             const result = ProtocolSchema.safeParse(req.body);
             if (result.success) {
                 res.json({ ok: true, data: result.data });
@@ -80,7 +80,7 @@ export class ConsoleServer {
         });
 
         // --- Studio: Simulation (XIV.5) ---
-        this.app.post('/api/studio/simulate', (req, res) => {
+        this.app.post('/api/studio/simulate', async (req, res) => {
             const draft = req.body.protocol;
             const horizon = req.body.horizon || 50;
 
@@ -88,7 +88,7 @@ export class ConsoleServer {
                 // 1. We need a Simulation Engine instance.
                 // In a real app, this should be injected or singleton.
                 // We'll instantiate a fresh one using the real Kernel components.
-                const { SimulationEngine } = require('../../../kernel-core/L3/Simulation.js');
+                const { SimulationEngine } = await import('../../kernel-core/L3/Simulation.js');
                 // Kernel has protected properties, but we are inside Platform Trusted Layer.
                 const state = (this.kernel as any).state;
                 const registry = (this.kernel as any).registry;
@@ -110,15 +110,15 @@ export class ConsoleServer {
         });
 
         // --- IRE: Risk Engine (Stratum IV) ---
-        this.app.get('/api/ire/risks', (req, res) => {
-            const { RiskRegistry } = require('../../Solutions/IRE/RiskRegistry.js');
+        this.app.get('/api/ire/risks', async (req, res) => {
+            const { RiskRegistry } = await import('../../Solutions/IRE/RiskRegistry.js');
             // In real app, singleton registry
             const registry = new RiskRegistry();
             res.json({ ok: true, data: registry.getRisks() });
         });
 
-        this.app.get('/api/ire/compliance', (req, res) => {
-            const { RiskRegistry } = require('../../Solutions/IRE/RiskRegistry.js');
+        this.app.get('/api/ire/compliance', async (req, res) => {
+            const { RiskRegistry } = await import('../../Solutions/IRE/RiskRegistry.js');
             const registry = new RiskRegistry();
 
             // Get Active Protocols from Kernel
@@ -139,12 +139,57 @@ export class ConsoleServer {
 
             res.json({ ok: true, data: scorecard });
         });
+
+        // --- Operant: Behavioral Metrics ---
+        this.app.get('/api/operant/summary', (req, res) => {
+            try {
+                const focus = this.iface.getTruth('operant.focus');
+                const volume = this.iface.getTruth('operant.training.volume');
+                const balance = this.iface.getTruth('tokens.user.balance');
+                const load = this.iface.getTruth('operant.cognitive.load');
+
+                res.json({
+                    ok: true,
+                    data: {
+                        focus: focus?.value || 0,
+                        trainingVolume: volume?.value || 0,
+                        tokenBalance: balance?.value || 0,
+                        cognitiveLoad: load?.value || 0
+                    }
+                });
+            } catch (e: any) {
+                res.status(500).json({ ok: false, error: e.message });
+            }
+        });
+
+        // --- Operant: Active Contracts ---
+        this.app.get('/api/operant/contracts', (req, res) => {
+            try {
+                const contracts = this.iface.listProtocols('Habit'); // Using Habit as generic for now, or 'Contract'
+                res.json({ ok: true, data: contracts });
+            } catch (e: any) {
+                res.status(500).json({ ok: false, error: e.message });
+            }
+        });
+
+        // --- Operant: Token Exchange ---
+        this.app.get('/api/operant/exchange', (req, res) => {
+            res.json({
+                ok: true,
+                data: [
+                    { id: 'rew-01', name: 'Cognitive Buffer', cost: 250, description: 'Increases processing priority for 4 hours.' },
+                    { id: 'rew-02', name: 'Priority Execution', cost: 500, description: 'Bypasses standard deliberation latency.' },
+                    { id: 'rew-03', name: 'Rest Permit', cost: 750, description: 'Allows for an authorized rest period without penalty.' },
+                    { id: 'rew-04', name: 'Neural Optimization', cost: 250, description: 'Reduces cognitive load perception.' }
+                ]
+            });
+        });
     }
 
 
     public start() {
-        this.app.listen(this.port, () => {
-            console.log(`[IRON Console] Server running on http://localhost:${this.port}`);
+        this.app.listen(this.port, '0.0.0.0', () => {
+            console.log(`[IRON Console] Server running on http://0.0.0.0:${this.port}`);
             console.log(`[IRON Console] Linked to Kernel State: ACTIVE`);
         });
     }

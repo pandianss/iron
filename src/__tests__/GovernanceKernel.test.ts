@@ -28,12 +28,14 @@ jest.unstable_mockModule('../kernel-core/L0/Guards.js', () => ({
     BudgetGuard: jest.fn(),
     TimeGuard: jest.fn(),
     InvariantGuard: jest.fn(),
-    ReplayGuard: jest.fn()
+    ReplayGuard: jest.fn(),
+    MultiSigGuard: jest.fn(),
+    IrreversibilityGuard: jest.fn()
 }));
 
 // Real imports for types/values we don't mock or are just types
 import type { Action } from '../kernel-core/L2/State.js';
-import { Budget, BudgetType } from '../kernel-core/L0/Kernel.js';
+import { Budget, BudgetType } from '../kernel-core/L0/Primitives.js';
 
 describe('GovernanceKernel (Phase II Hardening)', () => {
     let GovernanceKernelClass: any;
@@ -60,6 +62,8 @@ describe('GovernanceKernel (Phase II Hardening)', () => {
     let mockProtocols: any;
     let mockAudit: any;
     let mockRegistry: any;
+    let mockMultiSigGuard: any;
+    let mockIrreversibilityGuard: any;
 
     beforeAll(async () => {
         // Dynamic import after mocks are defined
@@ -87,6 +91,8 @@ describe('GovernanceKernel (Phase II Hardening)', () => {
         mockInvariantGuard = GuardsModule.InvariantGuard;
         mockReplayGuard = GuardsModule.ReplayGuard;
         mockTimeGuard = GuardsModule.TimeGuard;
+        mockMultiSigGuard = GuardsModule.MultiSigGuard;
+        mockIrreversibilityGuard = GuardsModule.IrreversibilityGuard;
     });
 
     beforeEach(() => {
@@ -134,6 +140,11 @@ describe('GovernanceKernel (Phase II Hardening)', () => {
         mockInvariantGuard.mockReturnValue({ ok: true });
         mockReplayGuard.mockReturnValue({ ok: true });
         mockTimeGuard.mockReturnValue({ ok: true });
+        // New guards defaults
+        mockTimeGuard.mockReturnValue({ ok: true });
+        mockMultiSigGuard.mockReturnValue({ ok: true });
+        mockIrreversibilityGuard.mockReturnValue({ ok: true });
+
 
         // Instantiate Kernel
         kernel = new GovernanceKernelClass(
@@ -164,7 +175,7 @@ describe('GovernanceKernel (Phase II Hardening)', () => {
 
             expect(status.status).toBe('ACCEPTED');
             expect(mockSignatureGuard).toHaveBeenCalled();
-            expect(mockDelegation.authorized).toHaveBeenCalled();
+            expect(mockScopeGuard).toHaveBeenCalled();
         });
 
         test('should REJECT when Signature is invalid', async () => {
@@ -183,7 +194,8 @@ describe('GovernanceKernel (Phase II Hardening)', () => {
         });
 
         test('should REJECT when Scope is insufficient', async () => {
-            mockDelegation.authorized.mockReturnValue(false);
+            mockScopeGuard.mockReturnValue({ ok: false, violation: 'lacks Jurisdiction' });
+            // mockDelegation.authorized.mockReturnValue(false); // Ignored by mock guard
 
             const aid = await kernel.submitAttempt('alice', 'proto1', validAction);
             const status = await kernel.guardAttempt(aid);

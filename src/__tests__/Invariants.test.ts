@@ -1,12 +1,12 @@
 
 import { describe, it, expect } from '@jest/globals';
 import fc from 'fast-check';
-import { GovernanceKernel } from '../Kernel.js';
-import { StateModel, MetricRegistry, MetricType } from '../L2/State.js';
-import { IdentityManager, AuthorityEngine } from '../L1/Identity.js';
-import { ProtocolEngine } from '../L4/Protocol.js';
-import { AuditLog } from '../L5/Audit.js';
-import { generateKeyPair, signData } from '../L0/Crypto.js';
+import { GovernanceKernel } from '../kernel-core/Kernel.js';
+import { StateModel, MetricRegistry, MetricType } from '../kernel-core/L2/State.js';
+import { IdentityManager, AuthorityEngine } from '../kernel-core/L1/Identity.js';
+import { ProtocolEngine } from '../kernel-core/L4/Protocol.js';
+import { AuditLog } from '../kernel-core/L5/Audit.js';
+import { generateKeyPair, signData } from '../kernel-core/L0/Crypto.js';
 
 // --- Setup Helper ---
 function createKernel() {
@@ -22,7 +22,7 @@ function createKernel() {
     kernel.boot();
 
     // Register Basic Metrics
-    registry.register({ id: 'res.cpu', description: 'CPU', type: MetricType.GAUGE, validator: (v) => v >= 0 });
+    registry.register({ id: 'res.cpu', description: 'CPU', type: MetricType.GAUGE, validator: (v: any) => v >= 0 });
 
     // Register Root (The Source of Authority)
     identity.register({
@@ -43,11 +43,11 @@ describe('Kernel Formal Invariants (Property-Based)', () => {
     it('INV-001: Cryptographic Integrity (Signature Law)', () => {
         // Law: Any action with an invalid signature MUST be rejected.
         fc.assert(
-            fc.property(
+            fc.asyncProperty(
                 fc.string(), // Random Initiator
                 fc.string(), // Random Key
                 fc.string(), // Random Signature
-                (initiator, key, badSig) => {
+                async (initiator, key, badSig) => {
                     const { kernel, identity } = createKernel();
 
                     // Register Entity (so we don't fail on Entity Not Found)
@@ -63,7 +63,7 @@ describe('Kernel Formal Invariants (Property-Based)', () => {
 
                     // Submit Action with bad signature
                     try {
-                        const aid = kernel.submitAttempt(initiator, 'SYSTEM', {
+                        const aid = await kernel.submitAttempt(initiator, 'SYSTEM', {
                             actionId: 'test-action',
                             initiator,
                             payload: { metricId: 'res.cpu', value: 50 },
@@ -72,7 +72,7 @@ describe('Kernel Formal Invariants (Property-Based)', () => {
                             signature: badSig // <--- BAD
                         });
 
-                        const result = kernel.guardAttempt(aid);
+                        const result = await kernel.guardAttempt(aid);
 
                         // INVARIANT: Must be REJECTED
                         return result.status === 'REJECTED';
@@ -101,7 +101,7 @@ describe('Kernel Formal Invariants (Property-Based)', () => {
         authority.grant('auth-0', 'root', actor, 'TOTAL_CAPACITY', '*', '0', 'GOVERNANCE_SIGNATURE');
 
         // Execute Sequence
-        let previousHash = kernel.State.getSnapshotChain()[0].hash; // Genesis
+        let previousHash = kernel.State.getSnapshotChain()[0]?.hash || '0'.repeat(64); // Genesis
 
         fc.assert(
             fc.property(fc.integer({ min: 1, max: 100 }), (val) => {
@@ -130,9 +130,11 @@ describe('Kernel Formal Invariants (Property-Based)', () => {
 
                 // Direct State Application (Testing L2 State Logic separately from L0 Kernel Guard)
                 kernel.State.applyTrusted(
-                    { metricId: 'res.cpu', value: val },
+                    [{ metricId: 'res.cpu', value: val }],
                     now,
-                    actor
+                    actor,
+                    `act-${now}`, // actionId
+                    `ev-${now}`   // evidenceId
                 );
 
                 const chain = kernel.State.getSnapshotChain();

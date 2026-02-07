@@ -21,7 +21,9 @@ export class LogicalTimestamp {
     }
 
     static fromString(s: string): LogicalTimestamp {
-        const [time, logical] = s.split(':').map(Number);
+        const parts = s.split(':').map(Number);
+        const time = parts[0] ?? 0;
+        const logical = parts[1] ?? 0;
         return new LogicalTimestamp(time, logical);
     }
 }
@@ -75,22 +77,4 @@ export class InvariantEngine {
 }
 
 // --- Budgets ---
-export enum BudgetType {
-    ENERGY = 'ENERGY',
-    ATTENTION = 'ATTENTION',
-    RISK = 'RISK'
-}
 
-export class Budget {
-    constructor(public type: BudgetType, public limit: number, public consumed: number = 0) { }
-
-    public consume(amount: number): boolean {
-        if (this.consumed + amount > this.limit) return false;
-        this.consumed += amount;
-        return true;
-    }
-
-    public reset(): void {
-        this.consumed = 0;
-    }
-}

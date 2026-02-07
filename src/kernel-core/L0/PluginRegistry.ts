@@ -9,7 +9,7 @@ import { verifySignature } from './Crypto.js';
  */
 export class PluginRegistry {
     private plugins: Map<string, Plugin> = new Map();
-    private governancePublicKey?: string;
+    private governancePublicKey: string | undefined;
 
     constructor(governancePublicKey?: string) {
         this.governancePublicKey = governancePublicKey;

@@ -110,14 +110,17 @@ export class StateModel {
     }
 
     public validateMutation(payload: ActionPayload): void {
-        if (!payload?.metricId) throw new Error("Missing Metric ID");
+        if (!payload?.metricId) throw new Error("Missing Metric ID"); // Non-numeric metric ID");
 
         // Anti-Prototype Pollution
         const reserved = ['__proto__', 'prototype', 'constructor'];
         if (reserved.includes(payload.metricId)) throw new Error("Illegal Metric ID: Reserved Keyword");
 
         const def = this.registry.get(payload.metricId);
-        if (!def) throw new Error(`Unknown metric: ${payload.metricId}`);
+        if (!def) {
+            // console.log(`[StateDebug] Unknown metric: ${payload.metricId}. Registered: ${Array.from((this.registry as any).metrics.keys())}`);
+            throw new Error(`Unknown metric: ${payload.metricId}`);
+        }
         if (def.validator && !def.validator(payload.value)) throw new Error("Invalid Value");
     }
 
@@ -143,7 +146,8 @@ export class StateModel {
             throw new Error("Time Violation: Global Monotonicity Breach");
         }
 
-        const validActionId = actionId || hash(`trusted:${initiator}:${mutations[0].metricId}:${timestamp}`);
+        const firstMutation = mutations[0]!;
+        const validActionId = actionId || hash(`trusted:${initiator}:${firstMutation.metricId}:${timestamp}`);
 
         // 2. Calculate New State (Atomic Transition)
         const previousSnapshot = this.snapshots[this.snapshots.length - 1];
