@@ -3,7 +3,7 @@ import { IdentityManager, AuthorityEngine } from './L1/Identity.js';
 import { ProtocolEngine } from './L4/Protocol.js';
 import type { Mutation, Action, ActionPayload, KernelState, ActionID, CapacityID, JurisdictionID, EntityID } from './L0/Ontology.js';
 import { AuditLog } from './L5/Audit.js';
-import { SignatureGuard, ScopeGuard, TimeGuard, BudgetGuard, InvariantGuard, ReplayGuard, IrreversibilityGuard, MultiSigGuard } from './L0/Guards.js';
+import { SignatureGuard, ScopeGuard, TimeGuard, BudgetGuard, InvariantGuard, ReplayGuard, IrreversibilityGuard, MultiSigGuard, CollectiveGuard } from './L0/Guards.js';
 import { checkInvariants } from './L0/Invariants.js';
 import type { Rejection } from './L0/Invariants.js';
 import { LogicalTimestamp } from './L0/Kernel.js';
@@ -44,7 +44,11 @@ export class GovernanceKernel {
     private lifecycle: KernelState = 'UNINITIALIZED';
     private guards: GuardRegistry;
 
-    constructor(
+    // Pressure Tracker: Invariant ID -> Count
+    private rejectionTracker: Map<string, number> = new Map();
+    private readonly PRESSURE_THRESHOLD = 5;
+
+    public constructor(
         private identity: IdentityManager,
         private authority: AuthorityEngine,
         public state: StateModel,
@@ -63,6 +67,7 @@ export class GovernanceKernel {
         this.guards.register('BUDGET', BudgetGuard);
         this.guards.register('IRREVERSIBILITY', IrreversibilityGuard);
         this.guards.register('MULTISIG', MultiSigGuard);
+        this.guards.register('COLLECTIVE', CollectiveGuard);
 
         this.transition('CONSTITUTED');
     }
@@ -94,7 +99,7 @@ export class GovernanceKernel {
         } as Record<KernelState, KernelState[]>;
 
         if (from !== 'UNINITIALIZED' && !allowed[from].includes(to)) {
-            throw new Error(`Kernel Violation: Illegal State Transition ${from} -> ${to} `);
+            throw new Error(`Kernel Violation: Illegal State Transition ${from} -> ${to}`);
         }
 
         this.lifecycle = to;
@@ -132,7 +137,7 @@ export class GovernanceKernel {
         cost: number = 1
     ): Promise<AttemptID> {
         if (this.lifecycle !== 'ACTIVE') {
-            throw new Error(`Kernel Error: Cannot submit attempt in state ${this.lifecycle} `);
+            throw new Error(`Kernel Error: Cannot submit attempt in state ${this.lifecycle}`);
         }
         const attempt: Attempt = {
             id: action.actionId,
@@ -145,15 +150,20 @@ export class GovernanceKernel {
         };
 
         this.attempts.set(attempt.id, attempt);
-        await this.audit.append(action, 'ATTEMPT');
+        // Only append to audit log if not in rehearsal (unless we want a separate rehearsal log)
+        // For now, we log attempts even in rehearsal for traceability, but mark them? 
+        // User says "Nothing is attributed permanently" for rehearsal.
+        if (!(action.payload as any).rehearsal) {
+            await this.audit.append(action, 'ATTEMPT');
+        }
         return attempt.id;
     }
 
     /**
      * Article III.2 Authority Interface - Verify Mandate (Guard Attempt)
      */
-    public async guardAttempt(attemptId: AttemptID): Promise<{ status: 'ACCEPTED' | 'REJECTED', reason?: string }> {
-        if (this.lifecycle !== 'ACTIVE') throw new Error(`Kernel Error: Cannot guard attempt in state ${this.lifecycle} `);
+    public async guardAttempt(attemptId: AttemptID): Promise<{ status: 'ACCEPTED' | 'REJECTED', reason?: string | Rejection }> {
+        if (this.lifecycle !== 'ACTIVE') throw new Error(`Kernel Error: Cannot guard attempt in state ${this.lifecycle}`);
         const attempt = this.attempts.get(attemptId);
         if (!attempt) throw new Error("ATTEMPT_NOT_FOUND");
 
@@ -161,12 +171,29 @@ export class GovernanceKernel {
         let check = this.guards.evaluate('INVARIANT', { action: attempt.action, manager: this.identity });
         if (!check.ok) {
             const violation = (check as any).violation!;
-            const match = /\[(.*?)\] (.*)/.exec(violation);
-            const code = match ? match[1] : 'INVARIANT_VIOLATION';
-            const message = (match && match[2]) ? match[2] : violation;
+            // guards.evaluate returns strings or objects? Updated Guards to return objects maybe?
+            // Existing Guards return {ok: false, code, violation: string}
+            // We need to parse or update guards. 
+            // For now, let's assume InvariantGuard returns the full Rejection info if we update it.
+            // But wait, GuardResult is { ok: false, code: ErrorCode, violation: string }. We need to extend it.
 
-            await this.reject(attempt, { code: code as any, invariantId: 'Unknown', message });
-            return { status: 'REJECTED', reason: message };
+            // Let's manually reconstruct the rejection if it's the InvariantGuard, 
+            // OR we update GuardResult in L0/Guards.ts. 
+            // Since I haven't updated L0/Guards.ts yet, I will do a best-effort text parse or default here
+            // actually, I SHOULD update L0/Guards.ts. But I am editing Kernel.ts now.
+            // I will assume L0/Guards will be updated to carry 'details'.
+
+            const details = (check as any).details;
+            const rejection: Rejection = details || {
+                code: (check as any).code || 'INVARIANT_VIOLATION',
+                invariantId: 'UNKNOWN',
+                boundary: 'Invariant',
+                permissible: 'Unknown',
+                message: violation
+            };
+
+            await this.reject(attempt, rejection);
+            return { status: 'REJECTED', reason: rejection };
         }
 
         // 2. Identity & Signature
@@ -175,10 +202,12 @@ export class GovernanceKernel {
             const rejection: Rejection = {
                 code: (sigResult as any).code || ErrorCode.SIGNATURE_INVALID,
                 invariantId: 'INV-ID-01',
+                boundary: 'Identity Integrity',
+                permissible: 'Must provide valid signature matching registered public key.',
                 message: (sigResult as any).violation || "Invalid Signature"
             };
             await this.reject(attempt, rejection);
-            return { status: 'REJECTED', reason: rejection.message || "Invalid Signature" };
+            return { status: 'REJECTED', reason: rejection };
         }
 
         // 3. Scope & Jurisdiction
@@ -196,10 +225,12 @@ export class GovernanceKernel {
             const rejection: Rejection = {
                 code: (scopeResult as any).code || ErrorCode.OVERSCOPE_ATTEMPT,
                 invariantId: 'INV-AUTH-01',
+                boundary: 'AuthorityScope',
+                permissible: 'Actor must be granted specific capability for this metric.',
                 message: (scopeResult as any).violation || "Scope Violation"
             };
             await this.reject(attempt, rejection);
-            return { status: 'REJECTED', reason: rejection.message || "Scope Violation" };
+            return { status: 'REJECTED', reason: rejection };
         }
 
         // 4. Replay Protection
@@ -208,10 +239,12 @@ export class GovernanceKernel {
             const rejection: Rejection = {
                 code: (replayResult as any).code || ErrorCode.REPLAY_DETECTED,
                 invariantId: 'INV-SEC-01',
+                boundary: 'Temporal Integrity',
+                permissible: 'Action ID must be unique.',
                 message: (replayResult as any).violation || "Replay Detected"
             };
             await this.reject(attempt, rejection);
-            return { status: 'REJECTED', reason: rejection.message || "Replay Detected" };
+            return { status: 'REJECTED', reason: rejection };
         }
 
         // 5. Irreversibility Guard (Continuity Bias)
@@ -226,10 +259,12 @@ export class GovernanceKernel {
                 const rejection: Rejection = {
                     code: ErrorCode.IRREVERSIBILITY_VIOLATION,
                     invariantId: 'INV-CONT-01',
+                    boundary: 'Continuity Bias',
+                    permissible: 'Irreversible actions require multi-stakeholder approval.',
                     message: (irrResult as any).violation
                 };
                 await this.reject(attempt, rejection);
-                return { status: 'REJECTED', reason: (irrResult as any).violation };
+                return { status: 'REJECTED', reason: rejection };
             }
         }
 
@@ -239,16 +274,35 @@ export class GovernanceKernel {
                 const rejection: Rejection = {
                     code: ErrorCode.PROTOCOL_VIOLATION,
                     invariantId: 'PRO-BIND-01',
+                    boundary: 'Protocol Integrity',
+                    permissible: 'Protocol references must be valid and registered.',
                     message: "Protocol Binding Violation: Protocol not registered"
                 };
                 await this.reject(attempt, rejection);
-                return { status: 'REJECTED', reason: rejection.message };
+                return { status: 'REJECTED', reason: rejection };
             }
+        }
+
+        // 7. Collective Responsibility
+        const colResult = this.guards.evaluate('COLLECTIVE', { action: attempt.action, protocolId: attempt.protocolId });
+        if (!colResult.ok) {
+            const details = (colResult as any).details;
+            const rejection: Rejection = details || {
+                code: (colResult as any).code || ErrorCode.PROTOCOL_VIOLATION,
+                invariantId: 'INV-COL-01',
+                boundary: 'Collective Responsibility',
+                permissible: 'Must specify owner, synthesizer, and dissent record.',
+                message: (colResult as any).violation || "Collective Action Violation"
+            };
+            await this.reject(attempt, rejection);
+            return { status: 'REJECTED', reason: rejection };
         }
 
         // Acceptance
         attempt.status = 'ACCEPTED';
-        await this.audit.append(attempt.action, 'ACCEPTED');
+        if (!(attempt.action.payload as any).rehearsal) {
+            await this.audit.append(attempt.action, 'ACCEPTED');
+        }
 
         return { status: 'ACCEPTED' };
     }
@@ -258,7 +312,7 @@ export class GovernanceKernel {
      * Article V: State Interface - Commit Validated Transition
      */
     public async commitAttempt(attemptId: AttemptID, budget: Budget): Promise<Commit> {
-        if (this.lifecycle !== 'ACTIVE') throw new Error(`Kernel Error: Cannot commit in state ${this.lifecycle} `);
+        if (this.lifecycle !== 'ACTIVE') throw new Error(`Kernel Error: Cannot commit in state ${this.lifecycle}`);
 
         const attempt = this.attempts.get(attemptId);
         if (!attempt || attempt.status !== 'ACCEPTED') {
@@ -268,6 +322,9 @@ export class GovernanceKernel {
         // Article VII: Fiscal Law - Budget is equivalent to Physics
         const budResult = BudgetGuard({ budget, cost: attempt.cost });
         if (!budResult.ok) throw new Error(`Kernel Reject: Budget Violation(${(budResult as any).violation})`);
+
+        // Check Rehearsal Mode
+        const isRehearsal = (attempt.action.payload as any).rehearsal === true;
 
         try {
             // 1. Protocol Execution
@@ -286,27 +343,34 @@ export class GovernanceKernel {
             // ATOMIC COMMIT
             budget.consume(attempt.cost);
 
-            // Article III.6 Institutional Ledger & Evidence
-            const evidence = await this.audit.append(attempt.action, 'SUCCESS');
+            let evidenceId = 'REHEARSAL_EVIDENCE';
+            let prevEvidenceId = 'REHEARSAL_PREV';
 
-            // ATOMIC STATE COMMIT (One snapshot per action)
-            await this.state.applyTrusted(
-                transitions,
-                attempt.action.timestamp,
-                attempt.initiator,
-                attempt.id,
-                evidence.evidenceId
-            );
+            if (!isRehearsal) {
+                // Article III.6 Institutional Ledger & Evidence
+                const evidence = await this.audit.append(attempt.action, 'SUCCESS');
+                evidenceId = evidence.evidenceId;
+                prevEvidenceId = evidence.previousEvidenceId;
+
+                // ATOMIC STATE COMMIT (One snapshot per action)
+                await this.state.applyTrusted(
+                    transitions,
+                    attempt.action.timestamp,
+                    attempt.initiator,
+                    attempt.id,
+                    evidence.evidenceId
+                );
+                this.seenActions.add(attempt.action.actionId);
+            }
 
             attempt.status = 'COMMITTED';
-
             this.attempts.delete(attemptId);
-            this.seenActions.add(attempt.action.actionId);
+
 
             return {
                 attemptId: attempt.id,
-                oldStateHash: evidence.previousEvidenceId,
-                newStateHash: evidence.evidenceId,
+                oldStateHash: prevEvidenceId,
+                newStateHash: evidenceId,
                 cost: attempt.cost,
                 timestamp: attempt.action.timestamp,
                 status: 'COMMITTED'
@@ -315,8 +379,10 @@ export class GovernanceKernel {
         } catch (e: any) {
             console.error("Kernel Commit Error:", e);
             attempt.status = 'ABORTED';
-            await this.audit.append(attempt.action, 'ABORTED', e.message);
-            throw new Error(`Kernel Halt: Commit Failed: ${e.message} `);
+            if (!isRehearsal) {
+                await this.audit.append(attempt.action, 'ABORTED', e.message);
+            }
+            throw new Error(`Kernel Halt: Commit Failed: ${e.message}`);
         }
     }
 
@@ -332,7 +398,7 @@ export class GovernanceKernel {
         this.checkGovernanceAuth(actor, 'AUTHORITY.GRANT');
         const timestamp = '0:0';
         const sig = 'GOVERNANCE_SIGNATURE';
-        const authorityId = `auth:${Date.now()} `;
+        const authorityId = `auth:${Date.now()}`;
 
         this.authority.grant(authorityId, granter, grantee, capacity, jurisdiction, timestamp, sig);
         await this.audit.append(this.createSystemAction(actor, 'system.authority', { granter, grantee, capacity, jurisdiction }), 'SUCCESS');
@@ -352,7 +418,7 @@ export class GovernanceKernel {
     }
 
     private checkGovernanceAuth(actor: EntityID, action: string) {
-        if (!this.authority.authorized(actor, `GOVERNANCE:${action} `)) {
+        if (!this.authority.authorized(actor, `GOVERNANCE:${action}`)) {
             throw new Error(`Kernel Reject: Entity ${actor} not authorized for ${action}`);
         }
     }
@@ -389,26 +455,48 @@ export class GovernanceKernel {
 
     private async reject(attempt: Attempt, rejection: Rejection, metadata?: Record<string, any>) {
         attempt.status = 'REJECTED';
-        await this.audit.append(attempt.action, 'REJECT', rejection.message, {
-            ...metadata,
-            code: rejection.code,
-            invariantId: rejection.invariantId
-        });
+
+        // Instrument Pressure
+        const currentPressure = (this.rejectionTracker.get(rejection.invariantId) || 0) + 1;
+        this.rejectionTracker.set(rejection.invariantId, currentPressure);
+
+        if (currentPressure > this.PRESSURE_THRESHOLD) {
+            console.warn(`[Iron] Pressure Alert: Invariant ${rejection.invariantId} (Boundary: ${rejection.boundary}) under stress. Count: ${currentPressure}`);
+            // In a real system, we would trigger a governance event here
+        }
+
+        // Skip logging if rehearsal (optional, but requested "rejected attempts are recorded")
+        // User said "Rejected attempts are recorded, not hidden". So we record even rehearsal?
+        // Actually "5. Introduce Safe Rehearsal... Nothing is attributed permanently".
+        // Let's NOT record Rehearsal rejections in the permanent audit log, but maybe a volatile one.
+        // For simplicity, we skip audit append for rehearsal rejections.
+        if (!(attempt.action.payload as any).rehearsal) {
+            await this.audit.append(attempt.action, 'REJECT', rejection.message, {
+                ...metadata,
+                code: rejection.code,
+                invariantId: rejection.invariantId,
+                boundary: rejection.boundary,
+                permissible: rejection.permissible
+            });
+        }
 
         // Automatic Revocation (Product 1 requirement)
-        if (rejection.code === 'REVOKED_ENTITY' || rejection.code === 'SIGNATURE_INVALID' || rejection.code === ErrorCode.OVERSCOPE_ATTEMPT) {
-            console.log(`[Iron] Critical Breach(${rejection.code}).Triggering Automatic Revocation for ${attempt.initiator}`);
-            try {
-                this.identity.revoke(attempt.initiator, '0:0');
-            } catch (e: any) {
-                console.warn(`[Iron] Auto - Revocation Failed: ${e.message} `);
+        // Only if NOT rehearsal
+        if (!(attempt.action.payload as any).rehearsal) {
+            if (rejection.code === 'REVOKED_ENTITY' || rejection.code === 'SIGNATURE_INVALID' || rejection.code === ErrorCode.OVERSCOPE_ATTEMPT) {
+                console.log(`[Iron] Critical Breach(${rejection.code}).Triggering Automatic Revocation for ${attempt.initiator}`);
+                try {
+                    this.identity.revoke(attempt.initiator, '0:0');
+                } catch (e: any) {
+                    console.warn(`[Iron] Auto-Revocation Failed: ${e.message}`);
+                }
             }
         }
     }
 
     private createSystemAction(initiator: EntityID, metric: string, value: any): Action {
         return {
-            actionId: `sys:${Date.now()}:${Math.random()} `,
+            actionId: `sys:${Date.now()}:${Math.random()}`,
             initiator,
             payload: { metricId: metric, value },
             timestamp: '0:0',
@@ -422,7 +510,16 @@ export class GovernanceKernel {
         const aid = await this.submitAttempt(action.initiator, action.payload.protocolId || 'SYSTEM', action);
         const guardStatus = await this.guardAttempt(aid);
         if (guardStatus.status === 'REJECTED') {
-            throw new Error(`Kernel Reject: ${guardStatus.reason} `);
+            const reason = guardStatus.reason;
+            const msg = typeof reason === 'string' ? reason : reason?.message;
+            const details = typeof reason === 'object' ? reason : undefined;
+
+            // Throw KernelError with details
+            throw new KernelError(
+                details?.code || 'KERNEL_REJECTED' as any,
+                msg || 'Unknown Rejection',
+                details as any
+            );
         }
         const b = budget || new Budget('ENERGY' as any, 100);
         return await this.commitAttempt(aid, b);

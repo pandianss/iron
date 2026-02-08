@@ -46,15 +46,27 @@ export enum ErrorCode {
     MULTISIG_INSUFFICIENT = 'MULTISIG_INSUFFICIENT',
     MULTISIG_INVALID = 'MULTISIG_INVALID',
     IRREVERSIBILITY_VIOLATION = 'IRREVERSIBILITY_VIOLATION',
+
+    // VIII. Pressure
+    PRESSURE_THRESHOLD_EXCEEDED = 'PRESSURE_THRESHOLD_EXCEEDED',
+}
+
+export interface RejectionDetail {
+    code: ErrorCode;
+    invariantId: string;
+    boundary: string;      // "Identity", "Resource", "Authority"
+    permissible: string;   // "Must provide valid signature", "Must wait for cooldown"
+    message: string;
 }
 
 export class KernelError extends Error {
     constructor(
         public readonly code: ErrorCode,
         public readonly message: string,
+        public readonly details?: RejectionDetail,
         public readonly metadata?: Record<string, any>
     ) {
-        super(`[Iron:${code}] ${message}`);
+        super(`[Iron:${code}] ${message} | Boundary: ${details?.boundary || 'Unknown'}`);
         this.name = 'KernelError';
     }
 }

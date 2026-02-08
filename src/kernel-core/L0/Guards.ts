@@ -8,12 +8,17 @@ import { checkInvariants, type InvariantContext } from './Invariants.js';
 import { ErrorCode } from '../Errors.js';
 
 // --- Guard Pattern ---
-export type GuardResult = { ok: true } | { ok: false; code: ErrorCode; violation: string };
+export interface GuardResult {
+    ok: boolean;
+    code?: ErrorCode;
+    violation?: string;
+    details?: any; // RejectionDetail-like structure
+}
 
 export type Guard<T> = (input: T, ctx?: any) => GuardResult;
 
 const OK: GuardResult = { ok: true };
-const FAIL = (code: ErrorCode, msg: string): GuardResult => ({ ok: false, code, violation: msg });
+const FAIL = (code: ErrorCode, msg: string, details?: any): GuardResult => ({ ok: false, code, violation: msg, details });
 
 // --- Concrete Guards ---
 
@@ -21,7 +26,7 @@ const FAIL = (code: ErrorCode, msg: string): GuardResult => ({ ok: false, code, 
 export const InvariantGuard: Guard<InvariantContext> = (ctx) => {
     const result = checkInvariants(ctx);
     if (!result.ok && result.rejection) {
-        return FAIL(result.rejection.code as any, result.rejection.message);
+        return FAIL(result.rejection.code as any, result.rejection.message, result.rejection);
     }
     return OK;
 };
@@ -170,3 +175,31 @@ export const IrreversibilityGuard: Guard<{
     return OK;
 };
 
+// 10. Collective Action Guard (Article II - Collective Cognition: Responsibility)
+export const CollectiveGuard: Guard<{ action: Action, protocolId: string }> = ({ action, protocolId }) => {
+    // Only applies if action payload explicitly claims to be a collective decision
+    // or if the protocol implies it (e.g., 'GOVERNANCE').
+    const payload = action.payload; // Type safe now
+
+    if (payload.type === 'COLLECTIVE' || protocolId === 'GOVERNANCE') {
+        const missing: string[] = [];
+        if (!payload.owner) missing.push('owner');
+        if (!payload.synthesizer) missing.push('synthesizer');
+        if (payload.dissent === undefined) missing.push('dissent (record null if none)');
+
+        if (missing.length > 0) {
+            return FAIL(
+                ErrorCode.PROTOCOL_VIOLATION, // Or a new COL_ACTION_VIOLATION
+                `Collective Action requires explicit: ${missing.join(', ')}`,
+                {
+                    code: ErrorCode.PROTOCOL_VIOLATION,
+                    invariantId: 'INV-COL-01',
+                    boundary: 'Collective Responsibility',
+                    permissible: 'Must specify owner, synthesizer, and dissent record.',
+                    message: `Missing fields: ${missing.join(', ')}`
+                }
+            );
+        }
+    }
+    return OK;
+};

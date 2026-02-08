@@ -101,6 +101,13 @@ export interface Mutation {
 export interface ActionPayload extends Mutation {
     protocolId?: string;
     irreversible?: boolean; // NEW: Flag for high-consequence actions
+
+    // Collective Action Fields (Article II)
+    type?: 'COLLECTIVE' | string;
+    owner?: EntityID;
+    synthesizer?: EntityID;
+    dissent?: any;
+    [key: string]: any; // Allow extensibility
 }
 
 export type ActionID = string;
